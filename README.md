@@ -1,6 +1,33 @@
-# Instantly Domain Burn Detector — v1.0.0
+# Instantly Domain Burn Detector
 
-A Python CLI tool that pulls daily analytics from **Instantly API V2** into **SQLite**, detects burned domains, and outputs color-coded CLI reports.
+[![CI](https://github.com/nikhil-nischal/instantly-domain-tracker-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/nikhil-nischal/instantly-domain-tracker-oss/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+A Python CLI tool that pulls daily analytics from **Instantly API V2** into **SQLite**, detects burned domains, outputs color-coded CLI reports, and ships a self-hosted web dashboard.
+
+## Screenshots
+
+> Captured with synthetic demo data — no real mailboxes or API keys.
+
+**Domain overview** — one row per sending domain, classified as HEALTHY / AT_RISK / BURNED.
+
+![Domain overview](docs/screenshots/overview.png)
+
+**Per-domain mailbox detail** — drill into every mailbox on a domain.
+
+![Domain detail](docs/screenshots/domain-detail.png)
+
+**Reply-rate trend** — daily reply/bounce trend per domain.
+
+![Trend chart](docs/screenshots/trend.png)
+
+**Campaigns** — performance across all campaigns.
+
+![Campaigns](docs/screenshots/campaigns.png)
+
+**Settings** — provider-aware burn thresholds and sync controls.
+
+![Settings](docs/screenshots/settings.png)
 
 ## Quick Start
 
