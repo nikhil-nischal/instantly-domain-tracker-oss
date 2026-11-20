@@ -203,9 +203,8 @@ pytest tests/ -v
 
 Runs as a Docker container behind an existing shared Caddy reverse proxy
 (no host port published — only reachable via Caddy on the `shared_proxy`
-Docker network). A GitHub Actions workflow (`.github/workflows/deploy.yml`)
-redeploys automatically on every push to `main` — see it for the exact
-SSH/rebuild steps it runs.
+Docker network). You can optionally wire up a GitHub Actions SSH workflow to
+redeploy on every push to `main` (see step 7 below).
 
 ```bash
 # 1. Clone
@@ -243,8 +242,9 @@ systemctl list-timers domain-tracker-sync.timer   # verify next run = 7:00 IST
 sudo cp deploy/logrotate.conf /etc/logrotate.d/domain-tracker
 ```
 
-For GitHub Actions auto-deploy, set repo secrets `VM_HOST`, `VM_USER`, `VM_SSH_KEY`
-(an SSH key already authorized on the VM).
+7. **(Optional) GitHub Actions auto-deploy** — add a workflow that SSHs to the
+   VM and runs `git pull && docker compose up -d --build`, and set repo secrets
+   `VM_HOST`, `VM_USER`, `VM_SSH_KEY` (an SSH key already authorized on the VM).
 
 `/health` is exempt from the password wall so uptime monitors can hit it without logging in.
 
