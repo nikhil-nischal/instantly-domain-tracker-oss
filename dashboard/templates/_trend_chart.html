@@ -1,0 +1,57 @@
+<!-- ════════════════════════════════════════════════════════════
+     SHARED TREND CHART markup — single source of truth.
+     Used by domain_detail.html and overview.html. Paired with
+     static/trend-chart.js (initTrendChart). Optional include vars:
+       chart_title  — header text (default "📊 Reply Rate Trend")
+       empty_desc   — empty-state description line
+     ════════════════════════════════════════════════════════════ -->
+<div class="card chart-card">
+    <div class="card-header">
+        <h3>{{ chart_title | default('📊 Reply Rate Trend') }}</h3>
+        <div class="yaxis-scale-control">
+            <span class="yaxis-scale-label">Y‑axis</span>
+            <div class="yaxis-scale-pills" role="radiogroup" aria-label="Y-axis scale">
+                <button class="yaxis-scale-btn" data-scale="2" role="radio" aria-checked="false">2%</button>
+                <button class="yaxis-scale-btn" data-scale="5" role="radio" aria-checked="false">5%</button>
+                <button class="yaxis-scale-btn" data-scale="10" role="radio" aria-checked="false">10%</button>
+                <button class="yaxis-scale-btn" data-scale="20" role="radio" aria-checked="false">20%</button>
+                <button class="yaxis-scale-btn yaxis-scale-auto active" data-scale="auto" role="radio" aria-checked="true">Auto</button>
+            </div>
+        </div>
+    </div>
+    {% set _dr = default_range | default('30d') %}
+    <div class="chart-range-selector">
+        <button class="chart-range-btn{% if _dr == '7d' %} active{% endif %}" data-range="7d">7d</button>
+        <button class="chart-range-btn{% if _dr == '30d' %} active{% endif %}" data-range="30d">30d</button>
+        <button class="chart-range-btn{% if _dr == '90d' %} active{% endif %}" data-range="90d">90d</button>
+        <button class="chart-range-btn{% if _dr == '180d' %} active{% endif %}" data-range="180d">180d</button>
+        <button class="chart-range-btn{% if _dr == 'all' %} active{% endif %}" data-range="all">All</button>
+    </div>
+    <div class="chart-loading" id="chartLoading">
+        <div class="chart-loading-spinner"></div>
+        <div class="chart-loading-text">Loading chart data&hellip;</div>
+    </div>
+    <div class="chart-container-inline" id="chartContainer">
+        <canvas id="trendChart"></canvas>
+    </div>
+    <div class="chart-empty-state" id="chartEmpty" style="display: none;">
+        <div class="chart-empty-icon">📊</div>
+        <div class="chart-empty-title">No Data Yet</div>
+        <div class="chart-empty-desc">{{ empty_desc | default('No daily metrics found for this domain in the selected period.') }}</div>
+    </div>
+    <div class="chart-legend" id="chartLegend" style="display: none;">
+        <span class="legend-item" data-dataset-index="0">
+            <span class="legend-swatch legend-bar" style="background: rgba(156, 163, 175, 0.5); border-color: rgba(156, 163, 175, 0.7);"></span> Sent
+        </span>
+        <span class="legend-item" data-dataset-index="1">
+            <span class="legend-swatch" style="width: 20px; height: 3px; background: #fb923c; border: none; border-radius: 2px;"></span> Reply Rate %
+        </span>
+        <span class="legend-item" data-dataset-index="2">
+            <span class="legend-swatch" style="width: 20px; height: 1.5px; border-top: 1.5px dotted #ef4444; background: transparent;"></span> Bounce Rate %
+        </span>
+        <span class="legend-item" data-dataset-index="3">
+            <span class="legend-swatch" style="width: 20px; height: 3px; background: #22c55e; border: none; border-radius: 2px;"></span> Human Reply %
+        </span>
+    </div>
+
+</div>

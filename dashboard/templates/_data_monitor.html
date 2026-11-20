@@ -1,0 +1,57 @@
+<!-- ════════════════════════════════════════════════════════════
+     DATA MONITOR PANEL v2 — Shrishti Design
+     1×4 horizontal bar with em dash separators
+     Paired with static/data-monitor.js (unchanged API)
+     ════════════════════════════════════════════════════════════ -->
+<div class="data-monitor-panel" id="data-monitor-panel">
+    <!-- Top bar: title + date + badge side-by-side -->
+    <div class="dm-head">
+        <span class="dm-head-title">📊 Data Monitor</span>
+        <span class="dm-head-date" id="dm-date">Selected Range</span>
+        <span class="dm-head-badge" id="dm-badge">—</span>
+    </div>
+
+    <!-- 1×4 inline row with em dash separators -->
+    <div class="dm-row" id="dm-row">
+        <!-- Sent -->
+        <div class="dm-item" id="dm-sent">
+            <span class="dm-item-icon">📤</span>
+            <span class="dm-item-label">Sent</span>
+            <span class="dm-item-val" id="dm-sent-val">—</span>
+        </div>
+
+        <span class="dm-sep" aria-hidden="true">—</span>
+
+        <!-- Reply Rate (emphasized) -->
+        <div class="dm-item dm-item-emph" id="dm-replyrate">
+            <span class="dm-item-icon">💬</span>
+            <span class="dm-item-label">Reply Rate</span>
+            <span class="dm-item-val" id="dm-replyrate-val">—</span>
+        </div>
+
+        <span class="dm-sep" aria-hidden="true">—</span>
+
+        <!-- Human Reply -->
+        <div class="dm-item" id="dm-human">
+            <span class="dm-item-icon">👤</span>
+            <span class="dm-item-label">Human Reply</span>
+            <span class="dm-item-val" id="dm-human-val">—</span>
+        </div>
+
+        <span class="dm-sep" aria-hidden="true">—</span>
+
+        <!-- Bounce -->
+        <div class="dm-item" id="dm-bounce">
+            <span class="dm-item-icon">🚫</span>
+            <span class="dm-item-label">Bounce Rate</span>
+            <span class="dm-item-val" id="dm-bounce-val">—</span>
+        </div>
+
+        <!-- Status spans kept for JS compatibility, hidden by CSS -->
+        <span class="dm-status-ghost" id="dm-replyrate-status"></span>
+        <span class="dm-status-ghost" id="dm-human-status"></span>
+        <span class="dm-status-ghost" id="dm-bounce-status"></span>
+    </div>
+
+
+</div>

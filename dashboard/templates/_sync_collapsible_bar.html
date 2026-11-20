@@ -1,0 +1,27 @@
+<!-- ════════════════════════════════════════════════════════════
+     COLLAPSIBLE SYNC BAR — Shrishti Design
+     Replaces the backfill panel in the overview top row.
+     Sits at the bottom of page below tables.
+     Paired with static/sync-collapsible.js
+     ════════════════════════════════════════════════════════════ -->
+<div id="sync-collapsible-bar" class="sync-collapsible-wrap">
+    <!-- Collapsed header bar (always visible, clickable) -->
+    <div class="sync-status-bar" id="sync-status-bar" onclick="toggleSyncBar()">
+        <div class="sync-status-bar-left">
+            <span class="sync-status-icon" id="sync-bar-icon">🔄</span>
+            <span class="sync-status-label">Data Sync</span>
+            <span class="sync-status-dot is-pending" id="sync-bar-dot"></span>
+            <span class="sync-status-detail" id="sync-bar-detail">Loading…</span>
+        </div>
+        <div class="sync-status-bar-right">
+            <span class="sync-status-link" id="sync-bar-toggle">▾ Show Details</span>
+        </div>
+    </div>
+
+    <!-- Expandable body (hidden when collapsed) -->
+    <div class="sync-bar-body" id="sync-bar-body" style="max-height: 0;">
+        <div class="sync-bar-body-inner">
+            {% include "_backfill_panel.html" %}
+        </div>
+    </div>
+</div>

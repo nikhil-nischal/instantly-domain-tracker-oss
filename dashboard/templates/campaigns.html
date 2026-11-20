@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Campaigns{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">📋 Campaigns</h1>
+        <p class="page-subtitle">All active and completed campaigns{% if last_synced_at %} · Last synced {{ format_time(last_synced_at) }}{% endif %}</p>
+    </div>
+</div>
+
+<!-- Search filter -->
+<div class="filter-area">
+    <div class="filter-primary-row">
+        <div class="filter-search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16"
+                 fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input type="text" id="campaign-search"
+                   placeholder="Search campaigns…"
+                   oninput="filterCampaigns(this.value)"
+                   autocomplete="off">
+        </div>
+    </div>
+</div>
+
+<!-- Campaign Table Card -->
+<div class="card">
+    <div class="table-container" id="campaign-table-container">
+        {% if campaigns %}
+        {% macro sort_th(label, key, align='right') %}
+        <th style="text-align:{{ align }};">
+            <a href="?sort={{ key }}&amp;order={% if sort_by == key and sort_order == 'desc' %}asc{% else %}desc{% endif %}">
+                {{ label }}{% if sort_by == key %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}
+            </a>
+        </th>
+        {% endmacro %}
+        <table id="campaign-table">
+            <thead>
+                <tr>
+                    {{ sort_th('Status', 'status', 'center') }}
+                    {{ sort_th('Campaign Name', 'campaign_name', 'left') }}
+                    {{ sort_th('Leads · 📧 Sent', 'leads_count') }}
+                    {{ sort_th('Reply Rate', 'reply_rate') }}
+                    {{ sort_th('Replies', 'total_replies') }}
+                    {{ sort_th('Bounces', 'bounce_rate') }}
+                    {{ sort_th('Opp.', 'total_opportunities') }}
+                    <th style="text-align:center;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in campaigns %}
+                {% set bar_color = "#ef4444" if c.reply_rate is not none and c.reply_rate < 1 else ("#eab308" if c.reply_rate is not none and c.reply_rate < 2 else "#22c55e") %}
+                {% set bar_pct = (c.reply_rate / scale_max * 100) | round(1) if c.reply_rate is not none else 0 %}
+                <tr>
+                    <td style="text-align:center;">
+                        <span class="campaign-status-emoji" title="{{ c.status_label }}">{{ c.status_emoji }}</span>
+                    </td>
+                    <td>
+                        <a href="/campaign/{{ c.campaign_id }}/accounts" class="campaign-name-link">
+                            <span class="campaign-name">{{ c.campaign_name }}</span>
+                        </a>
+                    </td>
+                    <td style="text-align:right;white-space:nowrap;"><span class="replies-total">{{ format_num(c.leads_count) }}</span><span class="replies-separator"> · </span><span class="replies-human">📧 {{ format_num(c.total_sent) }}</span></td>
+                    <td style="text-align:right;">
+                        {% if c.reply_rate is not none %}
+                            <div class="reply-rate-display">
+                                <span class="reply-rate-value {% if c.reply_rate < 1 %}pct-negative{% elif c.reply_rate < 2 %}pct-warning{% else %}pct-positive{% endif %}">{{ c.reply_rate }}%</span>
+                                <div class="progress-bar">
+                                    <div class="progress-bar-fill" style="width: {{ bar_pct }}%; background: {{ bar_color }};"></div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <span class="pct-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:right;white-space:nowrap;"><span class="replies-total">{{ format_num(c.total_replies) }}</span><span class="replies-separator"> · </span><span class="replies-human">👤 {{ c.human_replies }}</span></td>
+                    <td style="text-align:right;white-space:nowrap;">{{ c.bounce_display }}</td>
+                    <td style="text-align:right;">{{ format_num(c.total_opportunities) }}</td>
+                    <td style="text-align:center;">
+                        <a href="/campaign/{{ c.campaign_id }}/accounts"
+                           class="btn btn-sm btn-view-details">
+                            View Details →
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">📭</div>
+            <h2>No campaigns yet</h2>
+            <p>Run a campaign backfill to populate this view.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- No results message (shown when filter hides all rows) -->
+<div id="no-campaign-results" class="no-results-msg" style="display:none;">
+    <div class="icon">🔍</div>
+    <h3>No matching campaigns</h3>
+    <p>Try a different search term.</p>
+</div>
+
+<script>
+let _campaignSearchTimer = null;
+
+function filterCampaigns(query) {
+    clearTimeout(_campaignSearchTimer);
+    _campaignSearchTimer = setTimeout(function() {
+        const q = query.toLowerCase().trim();
+        const rows = document.querySelectorAll('#campaign-table tbody tr');
+        let visible = 0;
+
+        rows.forEach(function(row) {
+            const name = (row.querySelector('.campaign-name')?.textContent || '').toLowerCase();
+            const match = !q || name.includes(q);
+            row.style.display = match ? '' : 'none';
+            if (match) visible++;
+        });
+
+        const noResults = document.getElementById('no-campaign-results');
+        if (noResults) {
+            noResults.style.display = (visible === 0 && q) ? 'block' : 'none';
+        }
+    }, 250);
+}
+</script>
+
+{% endblock %}

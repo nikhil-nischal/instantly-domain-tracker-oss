@@ -1,0 +1,567 @@
+{% extends "base.html" %}
+
+{% block title %}{{ domain }}{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumbs -->
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/" class="breadcrumb-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        Overview
+    </a>
+    <span class="breadcrumb-sep">/</span>
+    <span class="breadcrumb-current">{{ domain }}</span>
+</nav>
+
+{% set active_filter_count = (0
+  + (1 if lookback != 30 else 0)
+  + (1 if start or end else 0)
+  + (1 if request.args.get('tags') else 0)
+) %}
+{% set has_active_filters = active_filter_count > 0 %}
+
+<!-- Domain Header -->
+<div class="domain-header" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+    <div class="domain-favicon">
+        <img src="https://www.google.com/s2/favicons?domain={{ domain }}&sz=32"
+             width="28" height="28"
+             alt="" onerror="this.style.display='none'">
+    </div>
+    <div>
+        <h1 class="page-title">{{ domain }}</h1>
+        <p class="page-subtitle">{{ count }} mailboxes · {% if start and end %}{{ start }} to {{ end }}{% else %}Last {{ lookback }} days{% endif %}{% if hosted_country %} · <span class="hosted-country-badge {% if hosted_country == 'IN' %}country-in{% elif hosted_country == 'US' %}country-us{% elif hosted_country in ('GB','UK','DE','FR','NL','IE','IT','ES','PT','BE','CH','AT','SE','DK','NO','FI','PL','CZ','HU','RO','SK','SI','HR','BG','GR','LT','LV','EE','LU','MT','CY','IS','LI') %}country-eu{% else %}country-other{% endif %}">{{ hosted_country }}</span>{% endif %}</p>
+    </div>
+</div>
+
+<!-- Collapsible Filter Bar -->
+<div class="filter-area">
+  <!-- Row 0: Filters toggle + View Trend + Clear -->
+  <div class="filter-primary-row">
+    <button class="filter-toggle-btn{% if has_active_filters %} is-open{% endif %}" onclick="toggleFilters()">
+      Filters
+      {% if has_active_filters %}
+        <span class="filter-count-badge">{{ active_filter_count }}</span>
+      {% endif %}
+      <svg class="chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 9l6 6 6-6"/>
+      </svg>
+    </button>
+
+    <a href="/domain/{{ domain }}" class="btn">📈 Refresh</a>
+
+    {% if has_active_filters %}
+      <a href="/domain/{{ domain }}" class="filter-clear-btn">🧹 Clear all</a>
+    {% endif %}
+    <button class="bf-header-btn" onclick="scrollToSync()" title="Backfill missing data">⚙ Backfill</button>
+  </div>
+
+  <!-- Row 1: Expanded filter controls (collapsible) -->
+  <div class="filter-controls-panel{% if not has_active_filters %} is-collapsed{% endif %}" data-has-active="{% if has_active_filters %}true{% else %}false{% endif %}">
+    <div class="filter-pills-row">
+      <!-- Window -->
+      <div class="filter-pill">
+        <select id="window-select-detail" onchange="setParam('window', this.value)" class="pill-select">
+          <option value="7" {% if lookback == 7 %}selected{% endif %}>7 days</option>
+          <option value="14" {% if lookback == 14 %}selected{% endif %}>14 days</option>
+          <option value="30" {% if lookback == 30 %}selected{% endif %}>30 days</option>
+        </select>
+      </div>
+
+      <!-- Date Range -->
+      <div class="filter-pill">
+        <input type="text" id="date-range-picker" class="pill-date-input"
+               placeholder="Select range…">
+      </div>
+
+      <!-- Tags -->
+      <div class="filter-pill filter-pill-tags">
+        <div class="tag-filter" data-tag-filter="detail"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Domain Summary -->
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ count }}</div>
+        <div class="stat-label">Mailboxes</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" {% if domain_reply_rate is not none %}style="color: {% if domain_reply_rate < 1 %}#ef4444{% elif domain_reply_rate < 2 %}#eab308{% else %}#22c55e{% endif %}"{% endif %}>{% if domain_reply_rate is not none %}{{ domain_reply_rate }}%{% else %}—{% endif %}</div>
+        <div class="stat-label">Reply Rate</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "{:,}".format(total_sent) }}</div>
+        <div class="stat-label">Total Sent</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "{:,}".format(total_replies) }}</div>
+        <div class="stat-label">Replies</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color: {% if domain_bounce_rate is not none and domain_bounce_rate > 8 %}#ef4444{% elif domain_bounce_rate is not none and domain_bounce_rate > 5 %}#eab308{% else %}#22c55e{% endif %}">{% if domain_bounce_rate is not none %}{{ domain_bounce_rate }}%{% else %}—{% endif %}</div>
+        <div class="stat-label">Bounce Rate</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{% if domain_status == "BURNED" %}<span class="badge badge-burned">🔥 Burned</span>{% elif domain_status == "AT_RISK" %}<span class="badge badge-at-risk">⚠ At Risk</span>{% elif domain_status == "HEALTHY" %}<span class="badge badge-healthy">✅ Healthy</span>{% else %}<span class="badge badge-unknown">—</span>{% endif %}</div>
+        <div class="stat-label">Status</div>
+    </div>
+</div>
+
+<!-- Burn Trajectory Banner -->
+<div id="trajectory-banner" class="trajectory-banner trajectory-loading">
+    <div class="trajectory-icon">⏳</div>
+    <div class="trajectory-body">
+        <div class="trajectory-label">Loading trajectory…</div>
+        <div class="trajectory-desc">Fetching domain performance data</div>
+    </div>
+</div>
+
+<!-- Multi-Timeframe Cards -->
+<div id="timeframe-grid" class="timeframe-grid">
+    <div class="timeframe-card" data-tf="7d">
+        <div class="tf-loading">
+            <div class="tf-skeleton-value"></div>
+            <div class="tf-skeleton-text"></div>
+            <div class="tf-skeleton-badge"></div>
+        </div>
+    </div>
+    <div class="timeframe-card" data-tf="14d">
+        <div class="tf-loading">
+            <div class="tf-skeleton-value"></div>
+            <div class="tf-skeleton-text"></div>
+            <div class="tf-skeleton-badge"></div>
+        </div>
+    </div>
+    <div class="timeframe-card" data-tf="30d">
+        <div class="tf-loading">
+            <div class="tf-skeleton-value"></div>
+            <div class="tf-skeleton-text"></div>
+            <div class="tf-skeleton-badge"></div>
+        </div>
+    </div>
+    <div class="timeframe-card" data-tf="90d">
+        <div class="tf-loading">
+            <div class="tf-skeleton-value"></div>
+            <div class="tf-skeleton-text"></div>
+            <div class="tf-skeleton-badge"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     DATA MONITOR BAR — full-width 1×4 bar above chart
+     ════════════════════════════════════════════════════════════ -->
+<div class="overview-monitor-row">
+    {% include "_data_monitor.html" %}
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     DOMAIN DETAIL TOP ROW — trend chart (full width)
+     ════════════════════════════════════════════════════════════ -->
+<div class="overview-top-row">
+    <div class="overview-graph-slot">
+        {% include "_trend_chart.html" %}
+    </div>
+</div>
+
+{% if campaigns|length > 0 %}
+<div class="card">
+    <div class="card-header">
+        <h3>📋 Campaigns</h3>
+    </div>
+    <div class="campaign-tags">
+        {% for c in campaigns %}
+        <span class="campaign-tag">{{ c.campaign_name }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Mailbox Table -->
+<div class="card">
+    <div class="card-header">
+        <h3>📬 Mailboxes</h3>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; color:var(--text-muted);">{{ count }} accounts</span>
+            <button class="btn btn-sm" onclick="copyAllEmails()">📋 Copy All</button>
+        </div>
+    </div>
+    <div class="mailbox-filter-row">
+        <div class="mailbox-search-wrap">
+            <span class="mailbox-search-icon">🔍</span>
+            <input type="text" class="mailbox-search-input" id="mailboxFilter" placeholder="Filter accounts…" autocomplete="off">
+            <button class="mailbox-search-clear" id="mailboxFilterClear" aria-label="Clear filter">✕</button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table id="mailboxTable">
+            <thead>
+                <tr>
+{% set preserved_params = ['window','start','end','tags'] %}
+                    <th><a href="?sort=email&amp;order={% if sort_by == 'email' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Email{% if sort_by == 'email' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=sent&amp;order={% if sort_by == 'sent' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Sent{% if sort_by == 'sent' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=replies&amp;order={% if sort_by == 'replies' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Replies{% if sort_by == 'replies' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=reply_rate&amp;order={% if sort_by == 'reply_rate' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Reply Rate{% if sort_by == 'reply_rate' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=bounce_rate&amp;order={% if sort_by == 'bounce_rate' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Bounces{% if sort_by == 'bounce_rate' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: center;"><a href="?sort=status&amp;order={% if sort_by == 'status' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Status{% if sort_by == 'status' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in mailboxes %}
+                <tr class="row-{{ m.status|lower }}" data-email="{{ m.email|lower }}" data-domain="{{ m.email }}" data-status="{{ m.status|lower }}"
+                    data-sent="{{ m.total_sent }}"
+                    data-replies="{{ m.total_replies }}"
+                    data-auto-replies="{{ m.auto_replies }}"
+                    data-human-replies="{{ m.human_replies }}"
+                    data-human-reply-rate="{{ m.human_reply_rate }}"
+                    data-reply-rate="{{ m.reply_rate if m.reply_rate is not none else '' }}"
+                    data-bounce-rate="{{ m.bounce_rate if m.bounce_rate is not none else '' }}"
+                    data-bounced="{{ m.total_bounced }}">
+                    <td class="copy-email" style="font-family: monospace; font-size: 13px;">{{ m.email }}<span class="copy-tooltip">📋 Click to copy</span></td>
+                    <td style="text-align: right;">{{ "{:,}".format(m.total_sent) }}</td>
+                    <td style="text-align: right;"><span class="replies-total">{{ "{:,}".format(m.total_replies) }}</span><span class="replies-separator"> · </span><span class="replies-human">👤 {{ m.human_replies }}</span></td>
+                    <td style="text-align: right;">
+                        {% if m.reply_rate is not none and not m.low_volume %}
+                            {% set bar_color = "#ef4444" if m.reply_rate < 1 else ("#eab308" if m.reply_rate < 2 else "#22c55e") %}
+                            {% set bar_pct = (m.reply_rate / scale_max * 100) | round(1) %}
+                            <div class="progress-bar">
+                                <div class="progress-bar-fill" style="width: {{ bar_pct }}%; background: {{ bar_color }};"></div>
+                            </div>
+                            <span class="{% if m.reply_rate < 1 %}pct-negative{% elif m.reply_rate < 2 %}pct-warning{% else %}pct-positive{% endif %}">{{ m.reply_rate }}%</span>
+                        {% elif m.low_volume %}
+                            <span class="pct-muted">—</span>
+                        {% else %}
+                            <span class="pct-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">{{ m.bounce_display }}</td>
+                    <td style="text-align: center;">
+                        {% if m.status == "BURNED" %}
+                            <span class="badge badge-burned">🔥 Burned</span>
+                        {% elif m.status == "AT_RISK" %}
+                            <span class="badge badge-at-risk">⚠ At Risk</span>
+                        {% elif m.status == "HEALTHY" %}
+                            <span class="badge badge-healthy">✅ Healthy</span>
+                        {% else %}
+                            <span class="badge badge-unknown">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include "_sync_collapsible_bar.html" %}
+
+<script src="/static/tag-filter.js?v=7"></script>
+<script src="/static/trend-chart.js?v=3"></script>
+<script src="/static/data-monitor.js?v=1"></script>
+<script src="/static/sync-collapsible.js?v=1"></script>
+<script>
+/* ── Existing navigation helpers ─────────────────────────────── */
+function setParam(key, value) {
+    const params = new URLSearchParams(window.location.search);
+    if (value) {
+        params.set(key, value);
+    } else {
+        params.delete(key);
+    }
+    window.location.href = '?' + params.toString();
+}
+
+/* ── Toggle Filters Panel ────────────────────────────────── */
+function toggleFilters() {
+    var panel = document.querySelector('.filter-controls-panel');
+    var btn = document.querySelector('.filter-toggle-btn');
+    if (!panel) return;
+    panel.classList.toggle('is-collapsed');
+    if (btn) btn.classList.toggle('is-open');
+    var expanded = !panel.classList.contains('is-collapsed');
+    try { localStorage.setItem('filter-expanded', expanded ? '1' : '0'); } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const startParam = '{{ start or "" }}';
+    const endParam = '{{ end or "" }}';
+
+    flatpickr('#date-range-picker', {
+        mode: 'range',
+        dateFormat: 'Y-m-d',
+        defaultDate: startParam && endParam
+            ? [startParam, endParam]
+            : undefined,
+        maxDate: 'today',
+        animate: true,
+        onChange: function(selectedDates, dateStr) {
+            if (selectedDates.length === 2) {
+                const params = new URLSearchParams(window.location.search);
+                params.set('start', selectedDates[0].toISOString().split('T')[0]);
+                params.set('end', selectedDates[1].toISOString().split('T')[0]);
+                window.location.href = '?' + params.toString();
+            }
+        },
+    });
+
+    /* ── Restore filter panel state from localStorage ── */
+    var panel = document.querySelector('.filter-controls-panel');
+    var btn = document.querySelector('.filter-toggle-btn');
+    if (panel && btn) {
+        var hasActive = panel.dataset.hasActive === 'true';
+        var stored = null;
+        try { stored = localStorage.getItem('filter-expanded'); } catch(e) {}
+        if (hasActive || stored === '1') {
+            panel.classList.remove('is-collapsed');
+            btn.classList.add('is-open');
+        }
+    }
+});
+
+/* ── Trajectory Mapping ──────────────────────────────────────── */
+const TRAJECTORY_CONFIG = {
+    'Consistently Healthy':   { cls: 'trajectory-healthy',   icon: '🟢' },
+    'Recently Burned':        { cls: 'trajectory-burned',    icon: '🔴' },
+    'Never Performed':        { cls: 'trajectory-never-performed', icon: '🔴' },
+    'Recovering':             { cls: 'trajectory-recovering', icon: '🟡' },
+    'At Risk':                { cls: 'trajectory-at-risk',   icon: '⚠️'  },
+    'New Domain':             { cls: 'trajectory-new',       icon: '🔵'  },
+};
+
+const DEFAULT_TRAJECTORY = { cls: 'trajectory-new', icon: '🔵' };
+
+function renderTrajectory(data) {
+    const banner = document.getElementById('trajectory-banner');
+    if (!banner) return;
+
+    const cfg = TRAJECTORY_CONFIG[data.trajectory] || DEFAULT_TRAJECTORY;
+    banner.className = 'trajectory-banner ' + cfg.cls;
+    banner.innerHTML = `
+        <div class="trajectory-icon">${cfg.icon}</div>
+        <div class="trajectory-body">
+            <div class="trajectory-label">${escapeHtml(data.trajectory)}</div>
+            <div class="trajectory-desc">${escapeHtml(data.description)}</div>
+        </div>
+    `;
+}
+
+function showTrajectoryError(msg) {
+    const banner = document.getElementById('trajectory-banner');
+    if (!banner) return;
+    banner.className = 'trajectory-banner trajectory-error';
+    banner.innerHTML = `
+        <div class="trajectory-icon">⚠️</div>
+        <div class="trajectory-body">
+            <div class="trajectory-label">Trajectory unavailable</div>
+            <div class="trajectory-desc">${escapeHtml(msg)}</div>
+        </div>
+    `;
+}
+
+/* ── Timeframe Mapping ───────────────────────────────────────── */
+const STATUS_CONFIG = {
+    'HEALTHY':  { cls: 'tf-status-healthy', label: '✅ Healthy' },
+    'AT_RISK':  { cls: 'tf-status-at-risk', label: '⚠ At Risk' },
+    'BURNED':   { cls: 'tf-status-burned',  label: '🔥 Burned' },
+};
+const DEFAULT_STATUS = { cls: 'tf-status-unknown', label: '—' };
+
+const TREND_CONFIG = {
+    'improving': { cls: 'tf-trend-improving', arrow: '↑' },
+    'declining': { cls: 'tf-trend-declining', arrow: '↓' },
+    'stable':    { cls: 'tf-trend-stable',    arrow: '→' },
+};
+const DEFAULT_TREND = { cls: 'tf-trend-stable', arrow: '→' };
+
+function renderTimeframes(data) {
+    const grid = document.getElementById('timeframe-grid');
+    if (!grid) return;
+
+    if (!data || !data.timeframes) {
+        grid.innerHTML = '<div class="timeframe-card" style="grid-column: 1/-1; text-align: center; padding: 32px; color: var(--text-muted);">No timeframe data available</div>';
+        return;
+    }
+
+    for (const [key, tf] of Object.entries(data.timeframes)) {
+        const card = grid.querySelector(`[data-tf="${key}"]`);
+        if (!card) continue;
+
+        const rateColor = tf.reply_rate != null ? (tf.reply_rate < 1 ? 'var(--red)' : tf.reply_rate < 2 ? 'var(--yellow)' : 'var(--green)') : 'var(--text-muted)';
+        const statusCfg = STATUS_CONFIG[tf.status] || DEFAULT_STATUS;
+        const trendCfg = TREND_CONFIG[tf.trend] || DEFAULT_TREND;
+
+        // Premium layout: status badge first, then reply rate, then meta, then trend, then label at bottom
+        card.innerHTML = `
+            <div class="tf-status-badge ${statusCfg.cls}">${statusCfg.label}</div>
+            <div class="tf-reply-rate" style="color: ${rateColor}">
+                ${tf.reply_rate != null ? tf.reply_rate.toFixed(1) : '—'}<span class="pct-sign">%</span>
+            </div>
+            <div class="tf-meta">
+                <span class="tf-sent">${numFormat(tf.sent)} sent</span>
+                <span class="tf-meta-sep">·</span>
+                <span class="tf-bounce-rate">Bounce ${tf.bounce_rate != null ? tf.bounce_rate.toFixed(1) : '—'}%</span>
+            </div>
+            <div class="tf-trend ${trendCfg.cls}">
+                ${trendCfg.arrow} ${escapeHtml(tf.trend)}
+            </div>
+            <div class="tf-label">📅 ${escapeHtml(key)}</div>
+        `;
+    }
+}
+
+function showTimeframesError(msg) {
+    const grid = document.getElementById('timeframe-grid');
+    if (!grid) return;
+    grid.innerHTML = `<div class="timeframe-card" style="grid-column: 1/-1; text-align: center; padding: 32px; color: var(--red);">⚠️ ${escapeHtml(msg)}</div>`;
+}
+
+/* ── Trend Chart — moved to /static/trend-chart.js (shared) ── */
+
+/* ── Get tags from URL ──────────────────────────────────── */
+function getUrlTags() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tags');
+}
+
+/* ── Utility Helpers ─────────────────────────────────────────── */
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function numFormat(n) {
+    if (n == null) return '—';
+    return n.toLocaleString();
+}
+
+/* ── Copy All Emails ───────────────────────────────────────── */
+function copyAllEmails() {
+    const emailCells = document.querySelectorAll('.copy-email');
+    const emails = Array.from(emailCells).map(function(el) {
+        return el.textContent.replace('📋 Click to copy', '').trim();
+    }).join('\n');
+    navigator.clipboard.writeText(emails).then(function() {
+        showToast('Copied ' + emailCells.length + ' emails', 'success');
+    }).catch(function() {
+        showToast('Failed to copy emails', 'error');
+    });
+}
+
+/* ── Initialization ──────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+    const domain = '{{ domain }}';
+    window.__domain__ = domain;
+
+    // ── 1. Fetch trajectory banner ──
+    let trajUrl = '/domain/' + encodeURIComponent(domain) + '/burn-trajectory';
+    const trajTags = getUrlTags();
+    if (trajTags) {
+        trajUrl += '?tags=' + encodeURIComponent(trajTags);
+    }
+    fetch(trajUrl)
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(renderTrajectory)
+        .catch(function(err) {
+            console.error('Trajectory fetch failed:', err);
+            showTrajectoryError('Could not load trajectory data. ' + err.message);
+        });
+
+    // ── 2. Fetch multi-timeframe cards ──
+    let tfUrl = '/domain/' + encodeURIComponent(domain) + '/multi-timeframe';
+    const tfTags = getUrlTags();
+    if (tfTags) {
+        tfUrl += '?tags=' + encodeURIComponent(tfTags);
+    }
+    fetch(tfUrl)
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(renderTimeframes)
+        .catch(function(err) {
+            console.error('Timeframe fetch failed:', err);
+            showTimeframesError('Could not load timeframe data. ' + err.message);
+        });
+
+    // ── 3. Init trend chart (shared component) — this domain, default 30d ──
+    initTrendChart({
+        defaultDays: 30,
+        buildUrl: function (days) {
+            var url = '/domain/' + encodeURIComponent(domain) + '/trend/data?days=' + days;
+            var tags = getUrlTags();
+            if (tags) url += '&tags=' + encodeURIComponent(tags);
+            return url;
+        }
+    });
+
+    // ── 4. Init Data Monitor — wire table row hover ──
+    if (typeof initDataMonitor === 'function') {
+        initDataMonitor();
+    }
+
+    // ── 5. Mailbox table filter ──
+    var filterInput = document.getElementById('mailboxFilter');
+    var filterClear = document.getElementById('mailboxFilterClear');
+    var mailboxTable = document.getElementById('mailboxTable');
+
+    if (filterInput && mailboxTable) {
+        function filterMailboxTable() {
+            var query = filterInput.value.toLowerCase().trim();
+            var rows = mailboxTable.querySelectorAll('tbody tr');
+            var visible = 0;
+
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                if (!query) {
+                    row.style.display = '';
+                    visible++;
+                    continue;
+                }
+                // Search email (data attribute)
+                var email = (row.getAttribute('data-email') || '').toLowerCase();
+                var status = (row.getAttribute('data-status') || '').toLowerCase();
+                // Also search all visible text in the row
+                var rowText = (row.textContent || '').toLowerCase();
+
+                if (email.indexOf(query) !== -1 || status.indexOf(query) !== -1 || rowText.indexOf(query) !== -1) {
+                    row.style.display = '';
+                    visible++;
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+
+            // Show/hide clear button
+            if (filterClear) {
+                filterClear.classList.toggle('is-visible', !!query);
+            }
+        }
+
+        filterInput.addEventListener('input', filterMailboxTable);
+
+        if (filterClear) {
+            filterClear.addEventListener('click', function() {
+                filterInput.value = '';
+                filterInput.focus();
+                filterClear.classList.remove('is-visible');
+                var rows = mailboxTable.querySelectorAll('tbody tr');
+                for (var i = 0; i < rows.length; i++) {
+                    rows[i].style.display = '';
+                }
+            });
+        }
+    }
+});
+</script>
+{% endblock %}

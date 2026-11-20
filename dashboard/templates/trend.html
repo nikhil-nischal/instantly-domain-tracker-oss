@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Trend · {{ domain }}{% endblock %}
+
+{% block content %}
+
+<a href="/domain/{{ domain }}" class="back-link">← Back to {{ domain }} detail</a>
+
+<div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h1 class="page-title">📈 {{ domain }}</h1>
+        <p class="page-subtitle">Daily reply rate trend · {% if start and end %}{{ start }} to {{ end }}{% else %}Last {{ days }} days{% endif %}</p>
+    </div>
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">Period:</span>
+            <div class="chart-range-selector" style="margin-bottom: 0;">
+                <button class="chart-range-btn {% if days == 7 %}active{% endif %}" data-range="7d" onclick="goToDays(7)">7d</button>
+                <button class="chart-range-btn {% if days == 14 %}active{% endif %}" data-range="14d" onclick="goToDays(14)">14d</button>
+                <button class="chart-range-btn {% if days == 30 %}active{% endif %}" data-range="30d" onclick="goToDays(30)">30d</button>
+                <button class="chart-range-btn {% if days == 60 %}active{% endif %}" data-range="60d" onclick="goToDays(60)">60d</button>
+                <button class="chart-range-btn {% if days == 90 %}active{% endif %}" data-range="90d" onclick="goToDays(90)">90d</button>
+            </div>
+        </div>
+        <span class="filter-divider"></span>
+        <div class="filter-group">
+            <span class="filter-label">📆</span>
+            <input type="text" id="date-range-picker" class="filter-select date-range-input"
+                   placeholder="Select range…">
+        </div>
+    </div>
+</div>
+
+{% if dates|length == 0 %}
+<div class="empty-state">
+    <div class="icon">📊</div>
+    <h2>No trend data</h2>
+    <p>No daily metrics found for this domain in the selected period.</p>
+</div>
+{% else %}
+
+<!-- Summary stats -->
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ dates|length }}</div>
+        <div class="stat-label">Days of data</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "{:,}".format(sent_counts|sum) }}</div>
+        <div class="stat-label">Total Sent</div>
+    </div>
+    {% set total_rr_values = reply_rates | reject("none") | list %}
+    {% if total_rr_values|length > 0 %}
+    {% set avg_rr = (total_rr_values | sum / total_rr_values|length) | round(2) %}
+    <div class="stat-card">
+        <div class="stat-value" style="color: {% if avg_rr < 1 %}#ef4444{% elif avg_rr < 2 %}#eab308{% else %}#22c55e{% endif %}">{{ avg_rr }}%</div>
+        <div class="stat-label">Avg Reply Rate</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Chart -->
+<div class="card">
+    <div class="card-header">
+        <h3>Daily Metrics</h3>
+    </div>
+    <div class="chart-container">
+        <canvas id="trendChart"></canvas>
+    </div>
+    <!-- Custom Legend -->
+    <div class="chart-legend" id="trendLegend">
+        <span class="legend-item">
+            <span class="legend-swatch legend-line" style="border-color: #22c55e;"></span> Reply Rate
+        </span>
+        <span class="legend-item">
+            <span class="legend-swatch legend-line" style="border-color: #ef4444;"></span> Bounce Rate
+        </span>
+        <span class="legend-item">
+            <span class="legend-swatch legend-line" style="border-color: #60a5fa;"></span> Sent (daily)
+        </span>
+        <span class="legend-item hidden-mobile">
+            <span class="legend-swatch legend-threshold" style="border-color: #ef4444;"></span> Burn (1%)
+        </span>
+        <span class="legend-item hidden-mobile">
+            <span class="legend-swatch legend-threshold" style="border-color: #eab308;"></span> At-Risk (2%)
+        </span>
+    </div>
+</div>
+
+<script>
+/* ── Threshold lines plugin (same as detail page) ────────────── */
+const thresholdLinesPlugin = {
+    id: 'thresholdLines',
+    beforeDraw: function(chart) {
+        const ctx = chart.ctx;
+        const chartArea = chart.chartArea;
+        const yScale = chart.scales['y'];
+
+        if (!chartArea || !yScale) return;
+
+        const thresholds = [
+            { value: 1.0, color: '#ef4444', label: 'Burn (1%)', dash: [5, 3] },
+            { value: 2.0, color: '#eab308', label: 'At-Risk (2%)', dash: [5, 3] },
+        ];
+
+        const xLeft = chartArea.left;
+        const xRight = chartArea.right;
+
+        ctx.save();
+
+        thresholds.forEach(function(t) {
+            const y = yScale.getPixelForValue(t.value);
+            if (y < chartArea.top || y > chartArea.bottom) return;
+
+            ctx.beginPath();
+            ctx.setLineDash(t.dash);
+            ctx.strokeStyle = t.color;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.7;
+            ctx.moveTo(xLeft, y);
+            ctx.lineTo(xRight, y);
+            ctx.stroke();
+
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = t.color;
+            ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(t.label, xRight - 4, y - 2);
+        });
+
+        ctx.restore();
+    }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+
+    const dates = {{ dates|tojson }};
+    const replyRates = {{ reply_rates|tojson }};
+    const bounceRates = {{ bounce_rates|tojson }};
+    const sentCounts = {{ sent_counts|tojson }};
+
+    // Replace nulls with undefined for Chart.js (null = gap in line)
+    const rrData = replyRates.map(function(v) { return v === null ? undefined : v; });
+    const brData = bounceRates.map(function(v) { return v === null ? undefined : v; });
+
+    // Max sent for y1 scaling
+    const maxSent = Math.max.apply(null, sentCounts.filter(function(v) { return v !== null && v !== undefined; }));
+    const y1Max = (maxSent * 1.15) || 100;
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Reply Rate %',
+                data: rrData,
+                borderColor: '#22c55e',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#22c55e',
+                borderWidth: 2,
+                yAxisID: 'y'
+            }, {
+                label: 'Bounce Rate %',
+                data: brData,
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#ef4444',
+                borderWidth: 2,
+                yAxisID: 'y'
+            }, {
+                label: 'Sent (daily)',
+                data: sentCounts,
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.15)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#60a5fa',
+                borderWidth: 1.5,
+                yAxisID: 'y1',
+                order: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e2231',
+                    titleColor: '#e8eaed',
+                    bodyColor: '#d1d5db',
+                    footerColor: '#6b7280',
+                    borderColor: 'rgba(99, 102, 241, 0.3)',
+                    borderWidth: 1,
+                    padding: 14,
+                    cornerRadius: 8,
+                    caretSize: 6,
+                    boxPadding: 4,
+                    usePointStyle: true,
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed.y;
+                            if (value === undefined || value === null) return context.dataset.label + ': No data';
+                            if (context.dataset.yAxisID === 'y') return context.dataset.label + ': ' + value.toFixed(2) + '%';
+                            return context.dataset.label + ': ' + value.toLocaleString();
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(42, 47, 62, 0.5)' },
+                    ticks: {
+                        color: '#6b7280',
+                        font: { size: 11 },
+                        maxTicksLimit: 15
+                    }
+                },
+                y: {
+                    position: 'left',
+                    beginAtZero: true,
+                    max: 6,
+                    title: {
+                        display: true,
+                        text: 'Rate (%)',
+                        color: '#9aa0a6',
+                        font: { size: 11 }
+                    },
+                    grid: { color: 'rgba(42, 47, 62, 0.5)' },
+                    ticks: {
+                        color: '#6b7280',
+                        font: { size: 11 },
+                        callback: function(value) { return value + '%'; }
+                    },
+                    min: 0
+                },
+                y1: {
+                    position: 'right',
+                    beginAtZero: true,
+                    max: y1Max,
+                    title: {
+                        display: true,
+                        text: 'Volume',
+                        color: '#9aa0a6',
+                        font: { size: 11 }
+                    },
+                    grid: { display: false },
+                    ticks: {
+                        color: '#6b7280',
+                        font: { size: 11 },
+                        callback: function(v) {
+                            if (v >= 1000) return (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'K';
+                            return v;
+                        }
+                    },
+                    min: 0
+                }
+            }
+        },
+        plugins: [thresholdLinesPlugin]
+    });
+});
+
+function goToDays(days) {
+    window.location.href = '/domain/{{ domain }}/trend?days=' + days;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const startParam = '{{ start or "" }}';
+    const endParam = '{{ end or "" }}';
+
+    flatpickr('#date-range-picker', {
+        mode: 'range',
+        dateFormat: 'Y-m-d',
+        defaultDate: startParam && endParam
+            ? [startParam, endParam]
+            : undefined,
+        maxDate: 'today',
+        animate: true,
+        onChange: function(selectedDates, dateStr) {
+            if (selectedDates.length === 2) {
+                const url = '/domain/{{ domain }}/trend?start=' + selectedDates[0].toISOString().split('T')[0] + '&end=' + selectedDates[1].toISOString().split('T')[0];
+                window.location.href = url;
+            }
+        },
+    });
+});
+</script>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Domain Not Found{% endblock %}
+
+{% block content %}
+
+<a href="/" class="back-link">← Back to Overview</a>
+
+<div class="empty-state">
+    <div class="icon">🔍</div>
+    <h2>Domain not found</h2>
+    <p>No accounts found for domain <code>{{ domain }}</code>.</p>
+    <p style="margin-top: 16px;">
+        <a href="/" class="btn btn-primary">View all domains</a>
+    </p>
+</div>
+
+{% endblock %}

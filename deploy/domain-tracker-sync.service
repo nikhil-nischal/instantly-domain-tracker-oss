@@ -1,0 +1,8 @@
+[Unit]
+Description=Instantly domain tracker daily ETL sync
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/instantly-domain-tracker/scripts/run_daily.sh

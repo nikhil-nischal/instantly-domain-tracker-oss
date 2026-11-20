@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Add New User{% endblock %}
+
+{% block content %}
+
+<div class="add-user-container">
+    <h1 class="page-title">👤 Add New User</h1>
+    <p class="page-subtitle">Connect an Instantly account to track its domains and mailboxes.</p>
+
+    <div class="card add-user-form-card">
+        <form id="add-user-form" onsubmit="return false;">
+            <div class="form-group">
+                <label for="name">User Name</label>
+                <input type="text" id="name" name="name" placeholder="e.g. Acme Corp" required autocomplete="off">
+                <span class="form-hint">A friendly label to identify this account.</span>
+            </div>
+
+            <div class="form-group">
+                <label for="api-key">Instantly API Key</label>
+                <div class="password-wrapper">
+                    <input type="password" id="api-key" name="api_key" placeholder="Paste your Instantly API key here" required autocomplete="off">
+                    <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Toggle API key visibility">👁️</button>
+                </div>
+                <span class="form-hint">Your Instantly API key — <a href="https://app.instantly.ai/settings/api" target="_blank" rel="noopener" style="color: var(--accent);">find it here</a>.</span>
+            </div>
+
+            <div class="form-group" style="margin-top: 24px;">
+                <button type="submit" id="add-user-btn" class="btn btn-primary btn-submit" onclick="addUser()">
+                    ➕ Add User &amp; Start Import
+                </button>
+            </div>
+
+            <div id="add-user-error" class="add-user-error" style="display: none;"></div>
+        </form>
+    </div>
+</div>
+
+<script>
+async function addUser() {
+    const btn = document.getElementById('add-user-btn');
+    const errDiv = document.getElementById('add-user-error');
+    const name = document.getElementById('name').value.trim();
+    const apiKey = document.getElementById('api-key').value.trim();
+
+    if (!name || !apiKey) {
+        errDiv.textContent = 'Please fill in all fields.';
+        errDiv.style.display = 'block';
+        return;
+    }
+
+    errDiv.style.display = 'none';
+    setButtonLoading(btn);
+    btn.innerHTML = '➕ Add User &amp; Start Import';
+
+    try {
+        const resp = await fetch('/api/users/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, api_key: apiKey })
+        });
+        const data = await resp.json();
+
+        if (data.ok && data.slug) {
+            // Switch to the new user
+            const switchResp = await fetch('/switch-user/' + data.slug, { method: 'POST' });
+            if (switchResp.ok) {
+                window.location.href = '/';
+            } else {
+                errDiv.textContent = 'User created but switch failed. Please log in manually.';
+                errDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = '➕ Add User &amp; Start Import';
+            }
+        } else {
+            errDiv.textContent = data.error || 'Something went wrong. Please try again.';
+            errDiv.style.display = 'block';
+            btn.classList.remove('loading');
+            btn.disabled = false;
+        }
+    } catch (e) {
+        errDiv.textContent = 'Network error. Please check your connection and try again.';
+        errDiv.style.display = 'block';
+        btn.classList.remove('loading');
+        btn.disabled = false;
+    }
+}
+</script>
+
+{% endblock %}

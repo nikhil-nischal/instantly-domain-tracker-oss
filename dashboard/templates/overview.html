@@ -1,0 +1,903 @@
+{% extends "base.html" %}
+
+{% block title %}Domain Overview{% endblock %}
+
+{% block content %}
+
+{% set active_filter_count = (0
+  + (1 if lookback != 30 else 0)
+  + (1 if provider_filter else 0)
+  + (1 if start or end else 0)
+  + (1 if request.args.get('tags') else 0)
+) %}
+{% set has_active_filters = active_filter_count > 0 %}
+
+<div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+    <div>
+        <h1 class="page-title">📊 Domain Overview</h1>
+        <p class="page-subtitle">{% if start and end %}{{ start }} to {{ end }}{% else %}Last {{ lookback }} days{% endif %} · {{ now.strftime("%b %d, %Y") }}</p>
+    </div>
+</div>
+
+<!-- Collapsible Filter Bar -->
+<div class="filter-area">
+  <!-- Row 0: Always visible — Search + Filters toggle + Clear -->
+  <div class="filter-primary-row">
+    <div class="filter-search-wrap">
+      <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/>
+        <path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="domain-search" placeholder="Search domains…"
+             oninput="filterDomains(this.value)">
+    </div>
+    <button class="filter-toggle-btn{% if has_active_filters %} is-open{% endif %}" onclick="toggleFilters()">
+      Filters
+      {% if has_active_filters %}
+        <span class="filter-count-badge">{{ active_filter_count }}</span>
+      {% endif %}
+      <svg class="chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 9l6 6 6-6"/>
+      </svg>
+    </button>
+    {% if has_active_filters %}
+      <a href="/" class="filter-clear-btn">🧹 Clear all</a>
+    {% endif %}
+    <button class="bf-header-btn" onclick="scrollToSync()" title="Backfill missing data">⚙ Backfill</button>
+  </div>
+
+  <!-- Row 1: Expanded filter controls (collapsible) -->
+  <div class="filter-controls-panel{% if not has_active_filters %} is-collapsed{% endif %}" data-has-active="{% if has_active_filters %}true{% else %}false{% endif %}">
+    <div class="filter-pills-row">
+      <!-- Window -->
+      <div class="filter-pill">
+        <select id="window-select" onchange="setParam('window', this.value)" class="pill-select">
+          <option value="7" {% if lookback == 7 %}selected{% endif %}>7 days</option>
+          <option value="14" {% if lookback == 14 %}selected{% endif %}>14 days</option>
+          <option value="30" {% if lookback == 30 %}selected{% endif %}>30 days</option>
+        </select>
+      </div>
+
+      <!-- Provider with colored dots -->
+      <div class="filter-pill">
+        <select id="provider-select" onchange="setParam('provider', this.value)" class="pill-select">
+          <option value="" {% if not provider_filter %}selected{% endif %}>All providers</option>
+          <option value="gmail" {% if provider_filter == 'gmail' %}selected{% endif %}>Gmail</option>
+          <option value="outlook" {% if provider_filter == 'outlook' %}selected{% endif %}>Outlook</option>
+          <option value="other" {% if provider_filter == 'other' %}selected{% endif %}>SMTP</option>
+        </select>
+      </div>
+
+      <!-- Date Range -->
+      <div class="filter-pill">
+        <input type="text" id="date-range-picker" class="pill-date-input"
+               placeholder="Select range…">
+      </div>
+
+      <!-- Tags -->
+      <div class="filter-pill filter-pill-tags">
+        <div class="tag-filter" data-tag-filter="overview"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if domains|length == 0 %}
+{% include "_backfill_panel.html" %}
+<div class="empty-state">
+    <div class="icon">📭</div>
+    <h2>No domain data yet</h2>
+    <p>Run the daily ETL to populate the database. Once data is collected, this dashboard will show per-domain health metrics.</p>
+</div>
+{% else %}
+
+<!-- Summary Stats -->
+<div class="stat-grid">
+    <div class="stat-card stat-total">
+        <div class="stat-value">{{ domains|length }}</div>
+        <div class="stat-label">Domains</div>
+    </div>
+    <div class="stat-card stat-emails">
+        <div class="stat-value">{{ "{:,}".format(total_emails) }}</div>
+        <div class="stat-label">Emails</div>
+    </div>
+    <div class="stat-card stat-healthy">
+        <div class="stat-value">{{ healthy }}</div>
+        <div class="stat-label">Healthy</div>
+    </div>
+    <div class="stat-card stat-at-risk">
+        <div class="stat-value">{{ at_risk }}</div>
+        <div class="stat-label">At Risk</div>
+    </div>
+    <div class="stat-card stat-burned">
+        <div class="stat-value">{{ burned }}</div>
+        <div class="stat-label">Burned</div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     DATA MONITOR BAR — full-width 1×4 bar above chart
+     ════════════════════════════════════════════════════════════ -->
+<div class="overview-monitor-row">
+    {% include "_data_monitor.html" %}
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     OVERVIEW TOP ROW — trend chart (full width)
+     ════════════════════════════════════════════════════════════ -->
+<div class="overview-top-row">
+    <div class="overview-graph-slot">
+        {% set chart_title = '📊 Reply Rate Trend — All Domains' %}
+        {% set empty_desc = 'No daily metrics found across your domains in the selected period.' %}
+        {% set default_range = '90d' %}
+        {% include "_trend_chart.html" %}
+    </div>
+</div>
+
+<!-- Domain Table -->
+<div class="card card-dashboard">
+    <div class="card-header">
+        <h3>Domains</h3>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 12px; color: var(--text-muted);">{{ domains|length }} domains</span>
+        </div>
+    </div>
+
+    <div class="card-body-flex">
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+{% set preserved_params = ['window','provider','start','end','tags'] %}
+                    <th><a href="?sort=domain&amp;order={% if sort_by == 'domain' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Domain{% if sort_by == 'domain' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: center; width: 60px;">Hosted</th>
+                    <th style="text-align: center;" title="Total mailboxes (idle count in parentheses)"><a href="?sort=account_count&amp;order={% if sort_by == 'account_count' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Accounts(Idle){% if sort_by == 'account_count' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=sent&amp;order={% if sort_by == 'sent' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Sent{% if sort_by == 'sent' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=reply_rate&amp;order={% if sort_by == 'reply_rate' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Reply Rate{% if sort_by == 'reply_rate' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=replies&amp;order={% if sort_by == 'replies' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Replies{% if sort_by == 'replies' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: right;"><a href="?sort=bounce_rate&amp;order={% if sort_by == 'bounce_rate' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Bounces{% if sort_by == 'bounce_rate' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="text-align: center;"><a href="?sort=status&amp;order={% if sort_by == 'status' and sort_order == 'desc' %}asc{% else %}desc{% endif %}{% for key in preserved_params %}{% if request.args.get(key) %}&amp;{{ key }}={{ request.args.get(key) }}{% endif %}{% endfor %}">Status{% if sort_by == 'status' %} <span class="sort-arrow">{{ '▲' if sort_order == 'asc' else '▼' }}</span>{% endif %}</a></th>
+                    <th style="min-width: 160px;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in domains %}
+                {% set bar_color = "#ef4444" if d.reply_rate is not none and d.reply_rate < 1 else ("#eab308" if d.reply_rate is not none and d.reply_rate < 2 else "#22c55e") %}
+{% set bar_pct = (d.reply_rate / scale_max * 100) | round(1) if d.reply_rate is not none else 0 %}
+                <tr class="row-{{ d.status|lower }}"
+                    data-domain="{{ d.domain }}"
+                    data-sent="{{ d.total_sent }}"
+                    data-replies="{{ d.total_replies }}"
+                    data-auto-replies="{{ d.auto_replies }}"
+                    data-human-replies="{{ d.human_replies }}"
+                    data-human-reply-rate="{{ d.human_reply_rate }}"
+                    data-reply-rate="{{ d.reply_rate if d.reply_rate is not none else '' }}"
+                    data-bounce-rate="{{ d.bounce_rate if d.bounce_rate is not none else '' }}"
+                    data-bounced="{{ d.total_bounced }}"
+                    data-status="{{ d.status|lower }}"
+                    data-accounts="{{ d.account_count }}">
+                    <td>
+                        <span class="provider-logo-inline">
+                            {% if d.provider == "Gmail" %}
+                                <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+                                    <rect width="24" height="24" rx="3" fill="#EA4335"/>
+                                    <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" fill="#fff"/>
+                                </svg>
+                            {% elif d.provider == "Outlook" %}
+                                <svg viewBox="0 0 23 23" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+                                    <path fill="#f35325" d="M1 1h10v10H1z"/>
+                                    <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                                    <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                                    <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                                </svg>
+                            {% else %}
+                                <span class="other-icon">🌐</span>
+                            {% endif %}
+                        </span>
+                        <a href="/domain/{{ d.domain }}" class="domain-link">{{ d.domain }}</a>
+                    </td>
+                    <td style="text-align: center; vertical-align: middle;">
+                        <span class="hosted-cell" data-domain="{{ d.domain }}"><span class="hosted-loading"></span></span>
+                    </td>
+                    <td style="text-align: center;">{{ d.account_count }}{% if d.idle_count > 0 %} <span class="idle-count">({{ d.idle_count }})</span>{% endif %}</td>
+                    <td style="text-align: right;">{{ "{:,}".format(d.total_sent) }}</td>
+                    <td style="text-align: right;">
+                        {% if d.reply_rate is not none and not d.low_volume %}
+                            <div class="reply-rate-display">
+                                <span class="reply-rate-value {% if d.reply_rate < 1 %}pct-negative{% elif d.reply_rate < 2 %}pct-warning{% else %}pct-positive{% endif %}">{{ d.reply_rate }}%</span>
+                                <div class="progress-bar">
+                                    <div class="progress-bar-fill" style="width: {{ bar_pct }}%; background: {{ bar_color }};"></div>
+                                </div>
+                            </div>
+                        {% elif d.low_volume %}
+                            <span class="pct-muted">—</span>
+                            <span class="hint">(low vol)</span>
+                        {% else %}
+                            <span class="pct-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;white-space:nowrap;"><span class="replies-total">{{ "{:,}".format(d.total_replies) }}</span><span class="replies-separator"> · </span><span class="replies-human">👤 {{ d.human_replies }}</span></td>
+                    <td style="text-align: right;white-space:nowrap;">{{ d.bounce_display }}</td>
+                    <td style="text-align: center;">
+                        {% if d.status == "BURNED" %}
+                            <span class="badge badge-burned">🔥 Burned</span>
+                        {% elif d.status == "AT_RISK" %}
+                            <span class="badge badge-at-risk">⚠ At Risk</span>
+                        {% elif d.status == "HEALTHY" %}
+                            <span class="badge badge-healthy">✅ Healthy</span>
+                        {% else %}
+                            <span class="badge badge-unknown">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <input type="text" class="note-input" data-domain="{{ d.domain }}"
+                               value="{{ d.note }}" placeholder="Add note…"
+                               onkeydown="if(event.key==='Enter'){this.blur();}"
+                               onblur="saveDomainNote(this)">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+
+</div>
+</div>
+
+{% include "_sync_collapsible_bar.html" %}
+
+{% endif %}
+
+<script src="/static/tag-filter.js?v=7"></script>
+<script src="/static/trend-chart.js?v=3"></script>
+<script src="/static/data-monitor.js?v=1"></script>
+<script src="/static/sync-collapsible.js?v=1"></script>
+<script>
+/* ── Combined (all-domains) trend chart — shared component ── */
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof initTrendChart !== 'function') return;
+    if (!document.getElementById('trendChart')) return;  // no-data state
+    initTrendChart({
+        defaultDays: 90,
+        buildUrl: function (days) {
+            var url = '/trend/data?days=' + days;
+            var tags = new URLSearchParams(window.location.search).get('tags');
+            if (tags) url += '&tags=' + encodeURIComponent(tags);
+            return url;
+        }
+    });
+
+    // Init Data Monitor — wire table row hover
+    if (typeof initDataMonitor === 'function') {
+        initDataMonitor();
+    }
+});
+
+/* ── Toggle Filters Panel ────────────────────────────────── */
+function toggleFilters() {
+    var panel = document.querySelector('.filter-controls-panel');
+    var btn = document.querySelector('.filter-toggle-btn');
+    if (!panel) return;
+    panel.classList.toggle('is-collapsed');
+    if (btn) btn.classList.toggle('is-open');
+    var expanded = !panel.classList.contains('is-collapsed');
+    try { localStorage.setItem('filter-expanded', expanded ? '1' : '0'); } catch(e) {}
+}
+
+function setParam(key, value) {
+    const params = new URLSearchParams(window.location.search);
+    if (value) {
+        params.set(key, value);
+    } else {
+        params.delete(key);
+    }
+    window.location.href = '?' + params.toString();
+}
+
+function filterDomains(query) {
+    const q = query.toLowerCase().trim();
+    const rows = document.querySelectorAll('tbody tr');
+    rows.forEach(function(row) {
+        const domain = row.querySelector('.domain-link');
+        if (domain) {
+            const text = domain.textContent.toLowerCase();
+            row.style.display = (!q || text.includes(q)) ? '' : 'none';
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const startParam = '{{ start or "" }}';
+    const endParam = '{{ end or "" }}';
+
+    flatpickr('#date-range-picker', {
+        mode: 'range',
+        dateFormat: 'Y-m-d',
+        defaultDate: startParam && endParam
+            ? [startParam, endParam]
+            : undefined,
+        maxDate: 'today',
+        animate: true,
+        onChange: function(selectedDates, dateStr) {
+            if (selectedDates.length === 2) {
+                const params = new URLSearchParams(window.location.search);
+                params.set('start', selectedDates[0].toISOString().split('T')[0]);
+                params.set('end', selectedDates[1].toISOString().split('T')[0]);
+                window.location.href = '?' + params.toString();
+            }
+        },
+    });
+
+    /* ── Restore filter panel state from localStorage ── */
+    var panel = document.querySelector('.filter-controls-panel');
+    var btn = document.querySelector('.filter-toggle-btn');
+    if (panel && btn) {
+        var hasActive = panel.dataset.hasActive === 'true';
+        var stored = null;
+        try { stored = localStorage.getItem('filter-expanded'); } catch(e) {}
+        if (hasActive || stored === '1') {
+            panel.classList.remove('is-collapsed');
+            btn.classList.add('is-open');
+        }
+    }
+});
+
+/* ════════════════════════════════════════════════════════════
+   BACKFILL PANEL JS — Shrishti Design
+   ════════════════════════════════════════════════════════════ */
+
+let _bfPollInterval = null;
+let _bfState = null; // 'idle', 'running', 'error', 'success'
+let _bfErrorStep = null;
+
+/* ── Day name helper ───────────────────────────────── */
+function _dayName(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return names[d.getDay()];
+}
+
+function _formatDate(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function _isToday(dateStr) {
+    const now = new Date();
+    const todayStr = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+    return dateStr === todayStr;
+}
+
+function _formatMonthDay(dateStr) {
+    const parts = dateStr.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[parseInt(parts[1]) - 1] + ' ' + parseInt(parts[2]);
+}
+
+/* ── Render pending day chips ──────────────────────────── */
+function _renderChips(pendingDays, maxChips) {
+    maxChips = maxChips || 5;
+    const container = document.getElementById('bf-chips');
+    container.innerHTML = '';
+    if (!pendingDays || pendingDays.length === 0) return;
+
+    const showDays = pendingDays.slice(0, maxChips);
+    const moreCount = pendingDays.length - maxChips;
+
+    showDays.forEach(function(dateStr) {
+        const chip = document.createElement('span');
+        chip.className = 'pending-day-chip';
+        if (_isToday(dateStr)) chip.classList.add('is-today');
+
+        const dot = document.createElement('span');
+        dot.className = 'chip-status-dot';
+        dot.classList.add(_isToday(dateStr) ? 'is-today-dot' : 'is-past-dot');
+        chip.appendChild(dot);
+
+        const dn = document.createElement('span');
+        dn.className = 'chip-dayname';
+        dn.textContent = _isToday(dateStr) ? 'Today' : _dayName(dateStr);
+        chip.appendChild(dn);
+
+        const dateSpan = document.createElement('span');
+        dateSpan.textContent = _formatMonthDay(dateStr);
+        chip.appendChild(dateSpan);
+
+        chip.dataset.date = dateStr;
+        container.appendChild(chip);
+    });
+
+    if (moreCount > 0) {
+        const more = document.createElement('span');
+        more.className = 'more-count';
+        more.textContent = '+' + moreCount + ' more';
+        container.appendChild(more);
+    }
+}
+
+/* ── Render actions ──────────────────────────────────── */
+function _renderActions(pendingCount) {
+    const container = document.getElementById('bf-actions');
+    container.innerHTML = '';
+
+    if (pendingCount > 0) {
+        const btnToday = document.createElement('button');
+        btnToday.className = 'bf-btn bf-btn-primary';
+        btnToday.id = 'bf-btn-today';
+        btnToday.innerHTML = '<span class="bf-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span> Backfill Today';
+        btnToday.onclick = function() { if (!this.disabled) handleBackfillToday(); };
+        container.appendChild(btnToday);
+
+        const btnAll = document.createElement('button');
+        btnAll.className = 'bf-btn bf-btn-secondary';
+        btnAll.id = 'bf-btn-all';
+        btnAll.innerHTML = '<span class="bf-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Backfill All';
+        btnAll.onclick = function() { if (!this.disabled) handleBackfillAll(); };
+        container.appendChild(btnAll);
+    } else {
+        const btnRefresh = document.createElement('button');
+        btnRefresh.className = 'bf-btn bf-btn-secondary';
+        btnRefresh.id = 'bf-btn-refresh';
+        btnRefresh.innerHTML = '<span class="bf-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></span> Force Refresh';
+        btnRefresh.onclick = function() { if (!this.disabled) handleBackfillAll(); };
+        container.appendChild(btnRefresh);
+    }
+}
+
+/* ── Show/hide panel sections ─────────────────────────── */
+function _showSection(id) {
+    ['bf-skeleton','bf-pending','bf-caught-up','bf-first-time','bf-error','bf-success'].forEach(function(s) {
+        var el = document.getElementById(s);
+        if (el) el.style.display = (s === id) ? '' : 'none';
+    });
+    // Also hide progress block when not pending
+    if (id !== 'bf-pending') {
+        var pb = document.getElementById('bf-progress');
+        if (pb) pb.classList.remove('is-active');
+    }
+    // Hide success/error message blocks within pending
+    var err = document.getElementById('bf-error');
+    if (err) err.classList.remove('is-active');
+    var succ = document.getElementById('bf-success');
+    if (succ) succ.classList.remove('is-active');
+}
+
+/* ── Set badge ────────────────────────────────────────── */
+function _setBadge(html, className) {
+    const badge = document.getElementById('bf-badge');
+    if (!badge) return;
+    badge.innerHTML = html;
+    badge.className = 'backfill-panel-badge';
+    // Clear any inline styles from error state
+    badge.style.background = '';
+    badge.style.color = '';
+    if (className) {
+        className.split(' ').forEach(function(c) { badge.classList.add(c); });
+    }
+}
+
+/* ── Update icon state ────────────────────────────────── */
+function _setIcon(className) {
+    const icon = document.getElementById('bf-icon');
+    if (!icon) return;
+    icon.className = 'backfill-panel-title-icon';
+    // Clear any inline styles from error state
+    icon.style.background = '';
+    icon.style.color = '';
+    if (className) icon.className += ' ' + className;
+}
+
+/* ── Set subtitle ─────────────────────────────────────── */
+function _setSubtitle(text) {
+    const sub = document.getElementById('bf-subtitle');
+    if (sub) {
+        sub.textContent = text;
+        sub.style.color = ''; // Clear error state color
+    }
+}
+
+/* ── Disable/enable buttons ───────────────────────────── */
+function _setButtonsDisabled(disabled) {
+    ['bf-btn-today','bf-btn-all','bf-btn-refresh'].forEach(function(id) {
+        var btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = disabled;
+            btn.style.opacity = disabled ? '0.4' : '';
+            btn.style.pointerEvents = disabled ? 'none' : '';
+        }
+    });
+}
+
+/* ════════════════════════════════════════════════════════════
+   Main: Load backfill panel
+   ════════════════════════════════════════════════════════════ */
+async function loadBackfillPanel() {
+    _showSection('bf-skeleton');
+    _setBadge('<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border:2px solid rgba(99,102,241,0.3);border-top-color:var(--accent);border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;"></span> Checking…</span>');
+    _setSubtitle('Checking sync status…');
+    _setIcon('');
+
+    try {
+        const res = await fetch('/api/backfill/pending-days');
+        if (!res.ok) throw new Error('API error');
+        const data = await res.json();
+
+        // Also check if any backfill is currently running
+        const statusRes = await fetch('/api/backfill/status');
+        const statusData = await statusRes.json();
+
+        const anyRunning = statusData.running === true ||
+            statusData.sync_today_running === true ||
+            statusData.backfill_pending_running === true;
+
+        if (anyRunning) {
+            // Resume polling to show running state
+            renderRunningFromStatus(statusData);
+            _startPolling();
+            return;
+        }
+
+        renderIdleFromPendingDays(data);
+    } catch (e) {
+        renderError('Could not load sync status. ' + e.message);
+    }
+}
+
+/* ── Render idle state from pending-days data ───────────── */
+function renderIdleFromPendingDays(data) {
+    const pending = data.pending_dates || [];
+    const totalPending = pending.length;
+    const panel = document.getElementById('backfill-panel');
+
+    _bfState = 'idle';
+    _bfErrorStep = null;
+    // Clean up any error state classes
+    panel.classList.remove('has-error');
+    panel.classList.remove('is-caught-up');
+
+    if (totalPending === 0) {
+        // Caught up
+        panel.classList.add('is-caught-up');
+        _showSection('bf-caught-up');
+        _setIcon('is-ok');
+        _setSubtitle('All days are synced and up-to-date');
+        _setBadge('<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><polyline points="20 6 9 17 4 12"/></svg> All caught up', 'badge-caught-up');
+
+        var msg = document.getElementById('bf-caught-msg');
+        var latestDate = data.latest_data_date || 'today';
+        msg.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="9"/></svg> All data synced through ' + _formatDate(latestDate);
+
+        _renderActions(0);
+    } else {
+        // Pending days
+        panel.classList.remove('is-caught-up');
+        _showSection('bf-pending');
+        _setIcon('');
+        _setSubtitle('ETL data needed for complete analytics');
+        _setBadge('<span class="badge-count">' + totalPending + '</span> days pending', 'badge-pending');
+
+        // Show up to 5 chips, rest as "+N more"
+        _renderChips(pending, 5);
+        _renderActions(totalPending);
+    }
+}
+
+/* ── Render running state from status data ─────────────── */
+function renderRunningFromStatus(data) {
+    const panel = document.getElementById('backfill-panel');
+    panel.classList.remove('is-caught-up');
+    _bfState = 'running';
+
+    _showSection('bf-pending');
+    _setIcon('');
+    _setSubtitle('Syncing data from Instantly API…');
+    _setBadge('<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border:2px solid rgba(99,102,241,0.3);border-top-color:var(--accent);border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;"></span> Syncing…</span>');
+
+    _setButtonsDisabled(true);
+
+    // Show progress bar
+    var pb = document.getElementById('bf-progress');
+    pb.classList.add('is-active');
+
+    // Determine which progress to show
+    var pct = data.sync_today_pct || data.backfill_pending_pct || data.pct || 0;
+    var step = data.sync_today_step || data.backfill_pending_step || data.step || 'Syncing…';
+
+    document.getElementById('bf-progress-fill').style.width = pct + '%';
+    document.getElementById('bf-step-label').textContent = step;
+    document.getElementById('bf-pct-label').textContent = pct + '%';
+
+    // Show just the running chips (remove existing chips, show "Syncing today" or current)
+    var chipsContainer = document.getElementById('bf-chips');
+    chipsContainer.innerHTML = '<span class="pending-day-chip is-today"><span style="width:8px;height:8px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;margin-right:4px;"></span> Syncing…</span>';
+    document.getElementById('bf-pending-label').textContent = 'Currently syncing';
+
+    // Hide actions
+    document.getElementById('bf-actions').innerHTML = '';
+}
+
+/* ── Poll backfill status ─────────────────────────────── */
+function _startPolling() {
+    if (_bfPollInterval) clearInterval(_bfPollInterval);
+    _bfPollInterval = setInterval(_pollBackfill, 2000);
+}
+
+function _stopPolling() {
+    if (_bfPollInterval) {
+        clearInterval(_bfPollInterval);
+        _bfPollInterval = null;
+    }
+}
+
+async function _pollBackfill() {
+    try {
+        const res = await fetch('/api/backfill/status');
+        const data = await res.json();
+
+        const isRunning = data.running === true ||
+            data.sync_today_running === true ||
+            data.backfill_pending_running === true;
+        const statusVal = data.sync_today_status || data.backfill_pending_status || data.status || '';
+
+        if (!isRunning && !statusVal) {
+            _stopPolling();
+            // Refresh the panel to show idle state
+            loadBackfillPanel();
+            return;
+        }
+
+        if (statusVal === 'completed') {
+            _stopPolling();
+            showSuccess();
+            return;
+        }
+
+        if (statusVal === 'error') {
+            _stopPolling();
+            renderError(data.step || data.sync_today_step || data.backfill_pending_step || 'Backfill failed');
+            return;
+        }
+
+        // Still running — update progress
+        var pct = data.sync_today_pct || data.backfill_pending_pct || data.pct || 0;
+        var step = data.sync_today_step || data.backfill_pending_step || data.step || 'Working…';
+
+        var fill = document.getElementById('bf-progress-fill');
+        if (fill) fill.style.width = pct + '%';
+        var label = document.getElementById('bf-step-label');
+        if (label) label.textContent = step;
+        var pctLabel = document.getElementById('bf-pct-label');
+        if (pctLabel) pctLabel.textContent = pct + '%';
+
+    } catch (e) {
+        // Transient — keep polling
+    }
+}
+
+/* ── Show success state ───────────────────────────────── */
+function showSuccess(count) {
+    _bfState = 'success';
+    _stopPolling();
+
+    var panel = document.getElementById('backfill-panel');
+    panel.classList.add('is-caught-up');
+
+    _showSection('bf-caught-up');
+    _setIcon('is-ok');
+    _setSubtitle('Backfill completed successfully');
+    _setBadge('<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><polyline points="20 6 9 17 4 12"/></svg> All caught up', 'badge-caught-up');
+
+    var msg = document.getElementById('bf-caught-msg');
+    if (count) {
+        msg.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="9"/></svg> ' + count + ' days of data synced.';
+    } else {
+        msg.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="9"/></svg> All data synced through today.';
+    }
+
+    // Show success message in body
+    var succEl = document.getElementById('bf-success');
+    succEl.classList.add('is-active');
+    var succText = document.getElementById('bf-success-text');
+    succText.textContent = count ? count + ' days of data synced. Refreshing…' : 'Data synced. Refreshing…';
+
+    _renderActions(0);
+
+    // Auto-refresh after 2 seconds
+    setTimeout(function() { window.location.reload(); }, 2000);
+}
+
+/* ── Render error state ───────────────────────────────── */
+function renderError(msg) {
+    _bfState = 'error';
+    _bfErrorStep = msg;
+    _stopPolling();
+
+    var panel = document.getElementById('backfill-panel');
+    panel.classList.remove('is-caught-up');
+    panel.classList.add('has-error');
+
+    _showSection('bf-pending');
+    _setIcon('');
+    // Re-show error block (undo _showSection's inline display:none)
+    var err = document.getElementById('bf-error');
+    if (err) err.style.display = '';
+    err.classList.add('is-active');
+    // Red icon background
+    var icon = document.getElementById('bf-icon');
+    icon.style.background = 'var(--red-bg)';
+    icon.style.color = 'var(--red)';
+    _setSubtitle('Backfill encountered an error');
+    var subtitle = document.getElementById('bf-subtitle');
+    subtitle.style.color = 'var(--red)';
+    _setBadge('⚠ Failed', '');
+    var badge = document.getElementById('bf-badge');
+    badge.style.background = 'var(--red-bg)';
+    badge.style.color = 'var(--red)';
+
+    // Show error text (already shown above, just set text)
+    document.getElementById('bf-error-text').textContent = msg || 'An unexpected error occurred.';
+
+    // Show retry button
+    var actions = document.getElementById('bf-actions');
+    actions.innerHTML = '';
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'bf-btn';
+    retryBtn.style.background = 'var(--red)';
+    retryBtn.style.color = '#fff';
+    retryBtn.style.boxShadow = '0 2px 8px rgba(239, 68, 68, 0.25)';
+    retryBtn.innerHTML = '<span class="bf-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Retry Backfill';
+    retryBtn.onclick = function() { handleBackfillAll(); };
+    actions.appendChild(retryBtn);
+
+    // Show the running chip for error context
+    document.getElementById('bf-pending-label').textContent = 'Failed at';
+    var chips = document.getElementById('bf-chips');
+    chips.innerHTML = '<span class="pending-day-chip" style="border-color: var(--red); color: var(--red);"><span class="chip-status-dot" style="background: var(--red);"></span> Backup process</span>';
+
+    // Hide progress
+    var pb = document.getElementById('bf-progress');
+    pb.classList.remove('is-active');
+
+    _setButtonsDisabled(true);
+}
+
+/* ════════════════════════════════════════════════════════════
+   Action handlers
+   ════════════════════════════════════════════════════════════ */
+
+async function handleBackfillToday() {
+    _stopPolling();
+
+    _showSection('bf-pending');
+    _setSubtitle('Syncing today\'s data from Instantly API…');
+    _setBadge('<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border:2px solid rgba(99,102,241,0.3);border-top-color:var(--accent);border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;"></span> Syncing…</span>');
+    _setButtonsDisabled(true);
+    _bfState = 'running';
+
+    var pb = document.getElementById('bf-progress');
+    pb.classList.add('is-active');
+    document.getElementById('bf-progress-fill').style.width = '5%';
+    document.getElementById('bf-step-label').textContent = 'Starting sync…';
+    document.getElementById('bf-pct-label').textContent = '5%';
+
+    document.getElementById('bf-pending-label').textContent = 'Currently syncing';
+    var chips = document.getElementById('bf-chips');
+    chips.innerHTML = '<span class="pending-day-chip is-today"><span style="width:8px;height:8px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;margin-right:4px;"></span> Today</span>';
+
+    try {
+        const res = await fetch('/api/sync-today', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            renderError(data.error || 'Failed to start sync');
+            return;
+        }
+        _startPolling();
+    } catch (e) {
+        renderError('Network error: ' + e.message);
+    }
+}
+
+async function handleBackfillAll() {
+    _stopPolling();
+
+    _showSection('bf-pending');
+    _setSubtitle('Backfilling all pending days…');
+    _setBadge('<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border:2px solid rgba(99,102,241,0.3);border-top-color:var(--accent);border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;"></span> Starting…</span>');
+    _setButtonsDisabled(true);
+    _bfState = 'running';
+
+    var pb = document.getElementById('bf-progress');
+    pb.classList.add('is-active');
+    document.getElementById('bf-progress-fill').style.width = '5%';
+    document.getElementById('bf-step-label').textContent = 'Starting backfill…';
+    document.getElementById('bf-pct-label').textContent = '5%';
+
+    document.getElementById('bf-pending-label').textContent = 'Backfill progress';
+    var chips = document.getElementById('bf-chips');
+    chips.innerHTML = '<span class="pending-day-chip is-today"><span style="width:8px;height:8px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:btn-spin 0.6s linear infinite;display:inline-block;margin-right:4px;"></span> Starting…</span>';
+
+    try {
+        const res = await fetch('/api/sync/backfill-pending', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            renderError(data.error || 'Failed to start backfill');
+            return;
+        }
+        _startPolling();
+    } catch (e) {
+        renderError('Network error: ' + e.message);
+    }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Load hosted country (lazy — loaded after table renders)
+   ════════════════════════════════════════════════════════════ */
+
+async function loadHostingInfo() {
+    try {
+        const res = await fetch('/api/domains/hosting-info');
+        if (!res.ok) throw new Error('API error');
+        const data = await res.json();
+
+        document.querySelectorAll('.hosted-cell').forEach(function(cell) {
+            const domain = cell.dataset.domain;
+            const info = data[domain];
+            if (info && info.country) {
+                var country = info.country;
+                var cls = country === 'IN' ? 'country-in'
+                    : (country === 'US' ? 'country-us'
+                    : (['GB','UK','DE','FR','NL','IE','IT','ES','PT','BE','CH','AT','SE','DK','NO','FI','PL','CZ','HU','RO','SK','SI','HR','BG','GR','LT','LV','EE','LU','MT','CY','IS','LI'].includes(country) ? 'country-eu'
+                    : 'country-other'));
+                cell.innerHTML = '<span class="hosted-country ' + cls + '" title="IP: ' + (info.ip || '?') + '">' + country + '</span>';
+            } else {
+                cell.innerHTML = '<span class="hosted-na">—</span>';
+            }
+        });
+    } catch (e) {
+        // Show dash on error too
+        document.querySelectorAll('.hosted-cell').forEach(function(cell) {
+            cell.innerHTML = '<span class="hosted-na">—</span>';
+        });
+    }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Save per-domain notes (inline, save-on-blur)
+   ════════════════════════════════════════════════════════════ */
+
+async function saveDomainNote(input) {
+    const domain = input.dataset.domain;
+    const note = input.value;
+    if (note === input.dataset.lastSaved) return;
+
+    input.classList.add('note-saving');
+    try {
+        const res = await fetch('/api/domains/' + encodeURIComponent(domain) + '/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: note }),
+        });
+        if (!res.ok) throw new Error('save failed');
+        input.dataset.lastSaved = note;
+        input.classList.remove('note-saving', 'note-error');
+        input.classList.add('note-saved');
+        setTimeout(function() { input.classList.remove('note-saved'); }, 1200);
+    } catch (e) {
+        input.classList.remove('note-saving');
+        input.classList.add('note-error');
+    }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Init on page load
+   ════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function() {
+    loadBackfillPanel();
+    loadHostingInfo();
+});
+</script>
+{% endblock %}

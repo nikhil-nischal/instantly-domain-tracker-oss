@@ -1,0 +1,22 @@
+services:
+  instantly-domain-tracker:
+    build: .
+    container_name: instantly-domain-tracker
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - default
+      - shared_proxy
+
+networks:
+  shared_proxy:
+    external: true

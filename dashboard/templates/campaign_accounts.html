@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block title %}{{ campaign_name }} — Accounts{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumb -->
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/campaigns" class="breadcrumb-link">📋 Campaigns</a>
+    <span class="breadcrumb-sep">/</span>
+    <span class="breadcrumb-current">{{ campaign_name }}</span>
+</nav>
+
+<!-- Page Title -->
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ campaign_name }}</h1>
+        <p class="page-subtitle">Per-account performance breakdown</p>
+    </div>
+</div>
+
+<!-- ── Stat Cards (campaign-wide totals) ── -->
+<div class="stat-grid" id="campaign-stats">
+    <div class="stat-card stat-total">
+        <div class="stat-value">{{ stats.accounts_with_data }}</div>
+        <div class="stat-label">Accounts with Data</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ format_num(stats.total_sent) }}</div>
+        <div class="stat-label">Total Sent</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ format_num(stats.total_replies) }}</div>
+        <div class="stat-label">Total Replies</div>
+    </div>
+    <div class="stat-card {% if stats.reply_rate >= 2 %}stat-healthy{% elif stats.reply_rate >= 1 %}stat-at-risk{% else %}stat-burned{% endif %}">
+        <div class="stat-value">{{ stats.reply_rate }}%</div>
+        <div class="stat-label">Reply Rate</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ format_num(stats.bounced) }}</div>
+        <div class="stat-label">Bounced</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color: var(--accent);">{{ format_num(stats.opportunities) }}</div>
+        <div class="stat-label">Opportunities</div>
+    </div>
+</div>
+
+<!-- Auto-reply rate note -->
+{% if stats.auto_reply_rate is not none and stats.auto_reply_rate > 0 %}
+<div class="note-banner">
+    <span class="note-icon">ℹ️</span>
+    <span>Auto-reply rate: <strong>{{ stats.auto_reply_rate }}%</strong> (campaign-wide — no per-account breakdown available)</span>
+</div>
+{% endif %}
+
+<!-- ── Filter Bar ── -->
+<div class="filter-area">
+    <div class="filter-primary-row">
+        <div class="filter-search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16"
+                 fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input type="text" id="account-search"
+                   placeholder="Search account email…"
+                   autocomplete="off"
+                   oninput="applyFilters()">
+        </div>
+
+        <div class="filter-pill">
+            <select id="domain-filter" class="pill-select" onchange="applyFilters()">
+                <option value="">All domains</option>
+                {% for d in domains %}
+                <option value="{{ d }}">{{ d }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="filter-pill">
+            <select id="health-filter" class="pill-select" onchange="applyFilters()">
+                <option value="">All health</option>
+                <option value="healthy">✅ Healthy (≥2%)</option>
+                <option value="at_risk">⚠ At Risk (1-2%)</option>
+                <option value="burned">🔥 Burned (&lt;1%)</option>
+                <option value="na">⬜ N/A (no data)</option>
+            </select>
+        </div>
+
+        <button class="btn btn-sm" id="clear-filters-btn"
+                onclick="clearFilters()" style="display:none;">
+            🧹 Clear
+        </button>
+    </div>
+</div>
+
+<!-- ── Account Table ── -->
+<div class="card">
+    <div class="card-header">
+        <h3>📬 Sending Accounts</h3>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:var(--text-muted);">
+                <span id="visible-count">{{ accounts|length }}</span> accounts
+            </span>
+        </div>
+    </div>
+    <div class="table-container">
+        {% if accounts %}
+        <table id="accounts-table">
+            <thead>
+                <tr>
+                    <th class="sortable" data-sort="email">Account Email</th>
+                    <th class="sortable" data-sort="domain">Domain</th>
+                    <th class="sortable" data-sort="sent" style="text-align:right;">Sent</th>
+                    <th class="sortable" data-sort="replies" style="text-align:right;">Replies</th>
+                    <th class="sortable" data-sort="reply_rate" style="text-align:right;">Reply Rate</th>
+                    <th>Subject Line</th>
+                    <th>Type</th>
+                    <th class="sortable" data-sort="last_activity" style="text-align:right;">Last Activity</th>
+                    <th class="sortable" data-sort="health" style="text-align:center;">Health</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in accounts %}
+                <tr data-email="{{ a.email|lower }}"
+                    data-domain="{{ a.domain }}"
+                    data-health="{{ a.health }}"
+                    class="row-{{ a.health }}">
+                    <td class="copy-email">
+                        {{ a.email }}
+                        <span class="copy-tooltip">📋 Click to copy</span>
+                    </td>
+                    <td>
+                        <a href="/domain/{{ a.domain }}" class="domain-link">
+                            {{ a.domain }}
+                        </a>
+                    </td>
+                    <td style="text-align:right;">{{ format_num(a.sent) }}</td>
+                    <td style="text-align:right;">{{ a.replies }}</td>
+                    <td style="text-align:right;">
+                        {% if a.reply_rate is not none and a.reply_rate > 0 %}
+                            <span class="reply-rate-value
+                                {% if a.reply_rate >= 2 %}pct-positive
+                                {% elif a.reply_rate >= 1 %}pct-warning
+                                {% else %}pct-negative{% endif %}">
+                                {{ a.reply_rate }}%
+                            </span>
+                        {% else %}
+                            <span class="pct-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ a.subject_line or '' }}">
+                        {{ a.subject_line[:80] ~ '…' if a.subject_line and a.subject_line|length > 80 else a.subject_line or '—' }}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if a.classification == "human_reply" %}
+                            <span class="badge badge-healthy" title="i_status: {{ a.i_status }}">👤 Human</span>
+                        {% elif a.classification == "auto_reply" %}
+                            <span class="badge badge-burned" title="i_status: {{ a.i_status }}">🤖 Auto</span>
+                        {% elif a.classification == "unclassified" %}
+                            <span class="badge badge-unknown" title="i_status: {{ a.i_status or 'N/A' }}">⬜ Unclassified</span>
+                        {% else %}
+                            <span class="badge badge-unknown">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:right;font-size:12px;color:var(--text-muted);">
+                        {{ format_time(a.last_activity) }}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if a.health == "healthy" %}
+                            <span class="badge badge-healthy">✅ Healthy</span>
+                        {% elif a.health == "at_risk" %}
+                            <span class="badge badge-at-risk">⚠ At Risk</span>
+                        {% elif a.health == "burned" %}
+                            <span class="badge badge-burned">🔥 Burned</span>
+                        {% else %}
+                            <span class="badge badge-unknown">⬜ N/A</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">📭</div>
+            <h2>No data for this campaign</h2>
+            <p>This campaign hasn't synced any account data yet. Run a backfill or wait for the next sync cycle.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- No results message -->
+<div id="no-account-results" class="no-results-msg" style="display:none;">
+    <div class="icon">🔍</div>
+    <h3>No accounts match your filters</h3>
+    <p>Try adjusting your search or filter criteria.</p>
+</div>
+
+<script>
+function applyFilters() {
+    const searchQuery = document.getElementById('account-search').value.toLowerCase().trim();
+    const domainVal = document.getElementById('domain-filter').value;
+    const healthVal = document.getElementById('health-filter').value;
+    const rows = document.querySelectorAll('#accounts-table tbody tr');
+    let visible = 0;
+
+    rows.forEach(function(row) {
+        const matchesSearch = !searchQuery || (row.getAttribute('data-email') || '').includes(searchQuery);
+        const matchesDomain = !domainVal || row.getAttribute('data-domain') === domainVal;
+        const matchesHealth = !healthVal || row.getAttribute('data-health') === healthVal;
+        const show = matchesSearch && matchesDomain && matchesHealth;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    const countEl = document.getElementById('visible-count');
+    if (countEl) countEl.textContent = visible;
+
+    const clearBtn = document.getElementById('clear-filters-btn');
+    if (clearBtn) {
+        clearBtn.style.display = (searchQuery || domainVal || healthVal) ? 'inline-flex' : 'none';
+    }
+
+    const noResults = document.getElementById('no-account-results');
+    if (noResults) {
+        noResults.style.display = (visible === 0) ? 'block' : 'none';
+    }
+}
+
+function clearFilters() {
+    document.getElementById('account-search').value = '';
+    document.getElementById('domain-filter').value = '';
+    document.getElementById('health-filter').value = '';
+    applyFilters();
+}
+
+/* ── Client-side Sorting ──────────────────────────────────── */
+let _sortState = { col: '', order: 'asc' };
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#accounts-table th.sortable').forEach(function(th) {
+        th.addEventListener('click', function() {
+            const col = th.getAttribute('data-sort');
+            const tbody = document.querySelector('#accounts-table tbody');
+            if (!tbody) return;
+
+            // Toggle order
+            let order = 'asc';
+            if (_sortState.col === col) {
+                order = _sortState.order === 'asc' ? 'desc' : 'asc';
+            }
+            _sortState = { col: col, order: order };
+
+            // Update sort indicators
+            document.querySelectorAll('#accounts-table th.sortable').forEach(function(sib) {
+                sib.classList.remove('sort-asc', 'sort-desc');
+            });
+            th.classList.add(order === 'asc' ? 'sort-asc' : 'sort-desc');
+
+            // Build rows array
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const direction = order === 'asc' ? 1 : -1;
+
+            rows.sort(function(a, b) {
+                let valA, valB;
+
+                if (col === 'email') {
+                    valA = (a.getAttribute('data-email') || '').toLowerCase();
+                    valB = (b.getAttribute('data-email') || '').toLowerCase();
+                    return valA.localeCompare(valB) * direction;
+                }
+
+                if (col === 'domain') {
+                    valA = (a.getAttribute('data-domain') || '').toLowerCase();
+                    valB = (b.getAttribute('data-domain') || '').toLowerCase();
+                    return valA.localeCompare(valB) * direction;
+                }
+
+                if (col === 'health') {
+                    const healthOrder = { 'healthy': 3, 'at_risk': 2, 'burned': 1, 'na': 0 };
+                    valA = healthOrder[a.getAttribute('data-health')] || 0;
+                    valB = healthOrder[b.getAttribute('data-health')] || 0;
+                    return (valA - valB) * direction;
+                }
+
+                if (col === 'last_activity') {
+                    valA = a.querySelector('td:nth-child(8)')?.textContent?.trim() || '';
+                    valB = b.querySelector('td:nth-child(8)')?.textContent?.trim() || '';
+                    // Try to parse as ISO date
+                    const dA = new Date(valA);
+                    const dB = new Date(valB);
+                    if (!isNaN(dA) && !isNaN(dB)) {
+                        return (dA - dB) * direction;
+                    }
+                    return valA.localeCompare(valB) * direction;
+                }
+
+                // Numeric columns: sent, replies, reply_rate
+                valA = parseFloat(a.querySelector('td:nth-child(3)')?.textContent?.replace(/[^0-9.-]/g, '') || '0');
+                valB = parseFloat(b.querySelector('td:nth-child(3)')?.textContent?.replace(/[^0-9.-]/g, '') || '0');
+                if (col === 'replies') {
+                    valA = parseFloat(a.querySelector('td:nth-child(4)')?.textContent?.replace(/[^0-9.-]/g, '') || '0');
+                    valB = parseFloat(b.querySelector('td:nth-child(4)')?.textContent?.replace(/[^0-9.-]/g, '') || '0');
+                }
+                if (col === 'reply_rate') {
+                    valA = parseFloat(a.querySelector('td:nth-child(5)')?.textContent?.replace(/[^0-9.-]/g, '') || '0');
+                    valB = parseFloat(b.querySelector('td:nth-child(5)')?.textContent?.replace(/[^0-9.-]/g, '') || '0');
+                }
+
+                return (valA - valB) * direction;
+            });
+
+            // Re-append sorted rows
+            rows.forEach(function(row) {
+                tbody.appendChild(row);
+            });
+
+            // Re-apply filters after sorting (rows keep visibility state)
+            applyFilters();
+        });
+    });
+});
+</script>
+
+{% endblock %}

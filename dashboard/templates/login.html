@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login · Domain Tracker</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div style="min-height:100vh; display:flex; align-items:center; justify-content:center;">
+    <div class="card" style="width:320px; padding:32px;">
+        <h1 style="font-size:18px; margin-bottom:20px; text-align:center;">
+            <span class="accent">🔥</span> Domain Tracker
+        </h1>
+        <form method="POST" style="display:flex; flex-direction:column; gap:12px;">
+            <input type="password" name="password" placeholder="Password" autofocus
+                   style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border);
+                          background:var(--bg-secondary); color:var(--text-primary); font-size:14px;">
+            {% if error %}
+            <p style="color:var(--red); font-size:13px;">{{ error }}</p>
+            {% endif %}
+            <button type="submit" class="btn btn-primary" style="width:100%;">Enter</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

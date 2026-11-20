@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}No Data{% endblock %}
+
+{% block content %}
+
+<div class="empty-state">
+    <div class="icon">📦</div>
+    <h2>No data yet</h2>
+    <p>
+        The database hasn't been populated yet. Run the ETL pipeline to pull 
+        data from Instantly, or check that the database file exists at:
+    </p>
+    <p><code>../data/instantly_tracker.db</code></p>
+</div>
+
+{% endblock %}

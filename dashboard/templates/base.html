@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Domain Burn Tracker{% endblock %} · Instantly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <link rel="stylesheet" href="/static/style.css?v=11">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<header class="header">
+    <div class="container header-inner">
+        <h1><a href="/"><span class="accent">🔥</span> Domain Tracker</a></h1>
+        <nav>
+            <a href="/">Overview</a>
+            <a href="/campaigns">Campaigns</a>
+            <a href="/settings">Settings</a>
+            <a href="/health">Health</a>
+        </nav>
+        <div class="user-switcher">
+            <select id="user-select" onchange="switchUser(this.value)">
+                <option value="" disabled selected>Loading...</option>
+            </select>
+        </div>
+        {% if show_logout %}
+        <form method="POST" action="/logout" style="margin-left:8px;">
+            <button type="submit" class="btn btn-sm" title="Log out">Log out</button>
+        </form>
+        {% endif %}
+    </div>
+</header>
+
+<!-- Add User Modal -->
+<div id="add-user-modal" class="modal">
+    <div class="modal-content">
+        <h3 style="margin-bottom:16px; font-size:18px;">👤 Add New User</h3>
+        <input type="text" id="new-user-name" placeholder="User Name (e.g., Acme Corp)">
+        <div class="password-wrapper">
+            <input type="password" id="new-user-api-key" placeholder="Instantly API Key">
+            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Toggle API key visibility">👁️</button>
+        </div>
+        <p class="form-hint" style="font-size:12px; color:var(--text-muted); margin:4px 0 12px;">
+            Find your API key on <a href="https://app.instantly.ai/settings/api" target="_blank" rel="noopener" style="color:var(--accent);">Instantly Settings</a>.
+        </p>
+        <button class="btn btn-primary btn-submit" onclick="submitAddUser()">➕ Add User &amp; Start Import</button>
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <p id="add-user-error" class="add-user-error" style="display:none;"></p>
+    </div>
+</div>
+
+<main class="container" style="padding-top: 24px; padding-bottom: 24px;">
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="footer container">
+    Instantly Domain Burn Detector · Dashboard v1
+</footer>
+
+<script>
+let _currentUserId = null;
+
+async function loadUsers() {
+    try {
+        const resp = await fetch('/api/users');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _currentUserId = data.current;
+        const select = document.getElementById('user-select');
+        select.innerHTML = '';
+        data.users.forEach(function(u) {
+            const opt = document.createElement('option');
+            opt.value = u.id;
+            opt.textContent = u.name + (u.is_admin ? ' ⭐' : '');
+            if (u.current) opt.selected = true;
+            select.appendChild(opt);
+        });
+        // Append "Add User" as the LAST option
+        const addOpt = document.createElement('option');
+        addOpt.value = 'add-user';
+        addOpt.textContent = '➕ Add User...';
+        select.appendChild(addOpt);
+    } catch (e) {
+        // Silently fail if /api/users isn't available yet
+    }
+}
+
+function switchUser(value) {
+    if (value === 'add-user') {
+        openModal('add-user-modal');
+        // Reset dropdown to the current user
+        if (_currentUserId) {
+            document.getElementById('user-select').value = _currentUserId;
+        }
+        return;
+    }
+    fetch('/switch-user/' + value, { method: 'POST' })
+        .then(function(r) {
+            if (r.ok) window.location.href = '/';
+        });
+}
+
+async function submitAddUser() {
+    const errDiv = document.getElementById('add-user-error');
+    const name = document.getElementById('new-user-name').value.trim();
+    const key = document.getElementById('new-user-api-key').value.trim();
+    if (!name || !key) {
+        errDiv.textContent = 'Please fill in all fields.';
+        errDiv.style.display = 'block';
+        return;
+    }
+    errDiv.style.display = 'none';
+    var submitBtn = document.querySelector('#add-user-modal .btn-submit');
+    if (submitBtn) setButtonLoading(submitBtn);
+    try {
+        const resp = await fetch('/api/users/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, api_key: key})
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            await fetch('/switch-user/' + data.slug, {method: 'POST'});
+            window.location.reload();
+        } else {
+            errDiv.textContent = data.error;
+            errDiv.style.display = 'block';
+        }
+    } catch (e) {
+        errDiv.textContent = 'Network error. Please check your connection.';
+        errDiv.style.display = 'block';
+    }
+}
+
+function openModal(id) {
+    document.getElementById(id).classList.add('is-open');
+}
+
+function closeModal() {
+    document.getElementById('add-user-modal').classList.remove('is-open');
+    document.getElementById('add-user-error').style.display = 'none';
+}
+
+// Close modal on backdrop click
+document.addEventListener('click', function(e) {
+    if (e.target.id === 'add-user-modal') {
+        closeModal();
+    }
+});
+
+loadUsers();
+
+/* ── Scrollable table fade indicator ─────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.table-container').forEach(function(el) {
+        if (el.scrollWidth > el.clientWidth) {
+            el.classList.add('is-scrollable');
+        }
+    });
+
+    /* ── Nav Active State (#3) ───────────────────────────────── */
+    var path = window.location.pathname;
+    document.querySelectorAll('.header nav a').forEach(function(a) {
+        var href = a.getAttribute('href');
+        if (path === href || (href !== '/' && path.startsWith(href))) {
+            a.classList.add('active');
+        }
+    });
+
+    /* ── Table row staggered animation (#1) ──────────────────── */
+    var rows = document.querySelectorAll('tbody tr');
+    rows.forEach(function(row, i) {
+        var delay = Math.min(0.02 * (i + 1), 0.6);
+        row.style.animationDelay = delay + 's';
+    });
+
+    /* ── Server-side saved alert → toast (#4) ────────────────── */
+    var savedAlert = document.querySelector('.alert.alert-success');
+    if (savedAlert) {
+        var msg = savedAlert.textContent.trim();
+        showToast(msg, 'success');
+        savedAlert.style.display = 'none';
+    }
+});
+
+/* ── Utility: escapeHtml ────────────────────────────────────── */
+function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+/* ── Toast Notification System (#4) ─────────────────────────── */
+function showToast(message, type) {
+    type = type || 'info';
+    var container = document.querySelector('.toast-container');
+    if (!container) {
+        var div = document.createElement('div');
+        div.className = 'toast-container';
+        document.body.appendChild(div);
+        container = div;
+    }
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    var icons = { success: '✅', error: '❌', info: 'ℹ️' };
+    toast.innerHTML = '<span>' + (icons[type] || 'ℹ️') + '</span><span>' + escapeHtml(message) + '</span>';
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('toast-out');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
+}
+
+/* ── Password Visibility Toggle (#7) ────────────────────────── */
+function togglePassword(btn) {
+    var input = btn.parentElement.querySelector('input');
+    var isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    btn.textContent = isPassword ? '🙈' : '👁️';
+}
+
+/* ── Button Loading / Success States (#10) ──────────────────── */
+function setButtonLoading(btn) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+}
+
+function setButtonSuccess(btn) {
+    btn.classList.remove('loading');
+    btn.classList.add('success');
+    setTimeout(function() {
+        btn.classList.remove('success');
+        btn.disabled = false;
+    }, 1500);
+}
+
+/* ── Backfill Progress Bar Renderer (#6) ────────────────────── */
+function renderBackfillProgress(pct, step) {
+    var statusEl = document.getElementById('data-mgmt-status');
+    if (!statusEl) return;
+    statusEl.className = 'data-mgmt-status is-active';
+    statusEl.innerHTML =
+        '<div class="backfill-progress">' +
+            '<div class="backfill-progress-fill" style="width:' + pct + '%"></div>' +
+        '</div>' +
+        '<span style="font-size:13px;color:var(--text-secondary)">' +
+            escapeHtml(step) + ' (' + pct + '%)' +
+        '</span>';
+}
+
+/* ── Click-to-Copy Email (#9) ───────────────────────────────── */
+document.addEventListener('click', function(e) {
+    var emailCell = e.target.closest('.copy-email');
+    if (!emailCell) return;
+    var email = emailCell.textContent.trim();
+    navigator.clipboard.writeText(email).then(function() {
+        var tooltip = emailCell.querySelector('.copy-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('span');
+            tooltip.className = 'copy-tooltip';
+            emailCell.appendChild(tooltip);
+            emailCell.style.position = 'relative';
+        }
+        tooltip.textContent = '✅ Copied!';
+        tooltip.classList.add('show');
+        setTimeout(function() { tooltip.classList.remove('show'); }, 1500);
+    }).catch(function() {
+        // Fallback for older browsers
+        var ta = document.createElement('textarea');
+        ta.value = email;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+});
+
+/* ── Top Navigation Progress Bar (#8) ───────────────────────── */
+(function() {
+    var bar = document.createElement('div');
+    bar.className = 'nav-progress';
+    document.body.prepend(bar);
+
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('a[href]');
+        if (link && !link.getAttribute('href').startsWith('#') && !e.ctrlKey && !e.metaKey) {
+            bar.style.animation = 'none';
+            bar.offsetHeight; /* force reflow */
+            bar.classList.add('active');
+            bar.style.display = 'block';
+        }
+    });
+
+    window.addEventListener('load', function() {
+        bar.style.width = '100%';
+        setTimeout(function() {
+            bar.style.display = 'none';
+            bar.style.width = '0%';
+            bar.classList.remove('active');
+        }, 400);
+    });
+})();
+</script>
+
+</body>
+</html>
